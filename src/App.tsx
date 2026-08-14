@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, MessageCircle, Radio, Sun, TrendingUp } from "lucide-react";
+import { BookOpen, MessageCircle, Radio, Sunrise, TrendingUp } from "lucide-react";
 import type { User } from "firebase/auth";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
@@ -24,6 +24,7 @@ import { findLesson, type Lesson } from "./content/lessons";
 import { TABS, type Screen, type Tab } from "./nav";
 import { tap } from "./components/ui";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { HaloMark } from "./components/HaloMark";
 
 import { Onboarding } from "./screens/Onboarding";
 import { Auth } from "./screens/Auth";
@@ -35,6 +36,7 @@ import { Assistant } from "./screens/Assistant";
 import { Device } from "./screens/Device";
 import { Shop } from "./screens/Shop";
 import { Settings } from "./screens/Settings";
+import { DevTools } from "./screens/DevTools";
 
 import "./theme.css";
 
@@ -267,13 +269,20 @@ function Shell() {
       case "shop":
         return <Shop onBack={() => setScreen("now")} />;
       case "settings":
-        return <Settings onBack={() => setScreen("now")} />;
+        return <Settings onBack={() => setScreen("now")} onOpenDev={() => setScreen("dev")} />;
+      case "dev":
+        return <DevTools onBack={() => setScreen("settings")} />;
       default:
         return <Now go={setScreen} />;
     }
   })();
 
-  const hideNav = screen === "lesson" || screen === "events" || screen === "shop" || screen === "settings";
+  const hideNav =
+    screen === "lesson" ||
+    screen === "events" ||
+    screen === "shop" ||
+    screen === "settings" ||
+    screen === "dev";
 
   return (
     <Frame>
@@ -299,26 +308,15 @@ function Splash() {
         background: "var(--void)",
       }}
     >
-      <div
-        className="pulse"
-        style={{
-          width: 66,
-          height: 66,
-          borderRadius: 20,
-          background: "linear-gradient(135deg,var(--teal),var(--violet))",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Sun size={32} color="var(--void)" />
+      <div className="pulse" style={{ borderRadius: 999, padding: 4 }}>
+        <HaloMark size={64} gradient />
       </div>
     </div>
   );
 }
 
-const NAV_META: Record<Tab, { label: string; icon: typeof Sun }> = {
-  now: { label: "Now", icon: Sun },
+const NAV_META: Record<Tab, { label: string; icon: typeof Radio }> = {
+  now: { label: "Now", icon: Sunrise },
   forecast: { label: "Forecast", icon: TrendingUp },
   assistant: { label: "Ask Halo", icon: MessageCircle },
   learn: { label: "Learn", icon: BookOpen },

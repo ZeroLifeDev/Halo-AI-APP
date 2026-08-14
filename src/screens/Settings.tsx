@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Activity,
   Bell,
   BellRing,
   Globe,
@@ -20,11 +21,14 @@ import { notificationsEnabled, requestNotificationPermission, sendTestAlert } fr
 import { kpToStatus } from "../lib/swpc";
 import { LANGUAGES } from "./Onboarding";
 
-export function Settings({ onBack }: { onBack: () => void }) {
+export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev: () => void }) {
   const { settings, setSetting, place, refreshLocation, locating } = useStore();
   const [notifOk, setNotifOk] = useState<boolean | null>(null);
   const [testSent, setTestSent] = useState(false);
   const [showLangs, setShowLangs] = useState(false);
+  // Seven taps on the version line opens the developer tab.
+  const [taps, setTaps] = useState(0);
+  const devUnlocked = taps >= 7;
 
   useEffect(() => {
     notificationsEnabled().then(setNotifOk);
@@ -299,6 +303,39 @@ export function Settings({ onBack }: { onBack: () => void }) {
               <Shield size={13} /> Your location never leaves your phone.
             </div>
           </Card>
+
+          <button
+            onClick={() => {
+              tap();
+              setTaps((t) => t + 1);
+            }}
+            style={{
+              width: "100%",
+              background: "none",
+              border: "none",
+              color: "var(--dim)",
+              fontSize: 11.5,
+              fontFamily: "var(--mono)",
+              padding: "16px 0 6px",
+              cursor: "default",
+              textAlign: "center",
+            }}
+          >
+            HALO GUARD 1.0
+            {taps > 2 && taps < 7 ? ` · ${7 - taps} more` : ""}
+          </button>
+
+          {devUnlocked && (
+            <div className="fade-up" style={{ marginBottom: 12 }}>
+              <Row
+                icon={Activity}
+                tint="var(--violet)"
+                title="Developer"
+                detail="Test notifications, feed status, diagnostics"
+                onClick={onOpenDev}
+              />
+            </div>
+          )}
 
           <div style={{ marginTop: 12 }}>
             <Btn

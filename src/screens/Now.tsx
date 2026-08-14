@@ -61,9 +61,11 @@ export function Now({ go }: { go: (s: Screen) => void }) {
   }, [c.kp, c.flareClass, c.wind?.speed, c.auroraChance, place?.label, settings.mode, c.loading]);
 
   const fallback =
-    settings.mode === "simple"
-      ? plainSummary(c.kp, c.flareClass)
-      : technicalSummary(c.kp, c.wind, c.mag, c.flareClass);
+    c.kp == null
+      ? "We can't tell you what's happening until we get a reading. Check your connection and try again."
+      : settings.mode === "simple"
+        ? plainSummary(c.kp, c.flareClass)
+        : technicalSummary(c.kp, c.wind, c.mag, c.flareClass);
 
   return (
     <div className="scroll" style={{ height: "100%", paddingBottom: 96 }}>
@@ -123,30 +125,55 @@ export function Now({ go }: { go: (s: Screen) => void }) {
 
           <div style={{ textAlign: "center", padding: "14px 0 6px" }}>
             {c.loading ? (
-              <div className="skeleton" style={{ height: 62, width: 140, margin: "0 auto" }} />
-            ) : (
-              <div
-                className="mono"
-                style={{ fontSize: 64, fontWeight: 600, lineHeight: 1, letterSpacing: "-0.02em" }}
-              >
-                {c.kp != null ? c.kp.toFixed(1) : "—"}
+              <>
+                <div className="skeleton" style={{ height: 62, width: 140, margin: "0 auto" }} />
+                <div style={{ color: "var(--dim)", fontSize: 15, fontWeight: 500, marginTop: 12 }}>
+                  Reading the satellites…
+                </div>
+              </>
+            ) : c.kp == null ? (
+              <div style={{ padding: "6px 0 2px" }}>
+                <CloudOff size={30} color="var(--dim)" style={{ marginBottom: 12 }} />
+                <div className="display" style={{ fontWeight: 700, fontSize: 17 }}>
+                  Can't reach the satellites
+                </div>
+                <div style={{ color: "var(--mid)", fontSize: 13.5, marginTop: 8, lineHeight: 1.55, maxWidth: 260, marginInline: "auto" }}>
+                  We couldn't get a reading from NOAA just now. This is almost always a connection
+                  problem, not a storm.
+                </div>
+                <div style={{ marginTop: 18 }}>
+                  <Btn variant="ghost" onClick={() => c.refresh()} icon={RefreshCw}>
+                    {c.refreshing ? "Trying…" : "Try again"}
+                  </Btn>
+                </div>
               </div>
+            ) : (
+              <>
+                <div
+                  className="mono"
+                  style={{ fontSize: 64, fontWeight: 600, lineHeight: 1, letterSpacing: "-0.02em" }}
+                >
+                  {c.kp.toFixed(1)}
+                </div>
+                <div style={{ color: status.color, fontSize: 17, fontWeight: 600, marginTop: 8 }}>
+                  {status.label}
+                </div>
+              </>
             )}
-            <div style={{ color: status.color, fontSize: 17, fontWeight: 600, marginTop: 8 }}>
-              {c.loading ? "Reading…" : status.label}
-            </div>
           </div>
 
-          <div style={{ marginTop: 10 }}>
-            <div
-              className="mono"
-              style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--dim)", marginBottom: 6 }}
-            >
-              <span>0 · CALM</span>
-              <span>STORM · 9</span>
+          {c.kp != null && (
+            <div style={{ marginTop: 10 }}>
+              <div
+                className="mono"
+                style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--dim)", marginBottom: 6 }}
+              >
+                <span>0 · CALM</span>
+                <span>STORM · 9</span>
+              </div>
+              <SpectrumLine value={status.scale} height={10} />
             </div>
-            <SpectrumLine value={status.scale} height={10} />
-          </div>
+          )}
 
           {c.kpHistory.length > 2 && (
             <div style={{ marginTop: 16 }}>
@@ -177,7 +204,9 @@ export function Now({ go }: { go: (s: Screen) => void }) {
         </Card>
 
         {/* impacts */}
-        <div style={{ display: "flex", gap: 12 }}>
+        {c.kp != null && (
+          <>
+            <div style={{ display: "flex", gap: 12 }}>
           <StatTile
             icon={Compass}
             label="Satellite navigation"
@@ -209,7 +238,9 @@ export function Now({ go }: { go: (s: Screen) => void }) {
             status={/^[MX]/.test(c.flareClass) ? "Notable" : "Background"}
             statusColor={/^X/.test(c.flareClass) ? "var(--red)" : /^M/.test(c.flareClass) ? "var(--amber)" : "var(--teal)"}
           />
-        </div>
+            </div>
+          </>
+        )}
 
         {/* aurora */}
         {c.auroraChance != null && (
@@ -297,11 +328,6 @@ export function Now({ go }: { go: (s: Screen) => void }) {
             : `Updated ${timeAgo(c.updatedAt)} · from NOAA SWPC`}
         </div>
 
-        {c.error && !c.kp && (
-          <Btn variant="quiet" onClick={() => c.refresh()} icon={RefreshCw}>
-            Try again
-          </Btn>
-        )}
       </div>
     </div>
   );

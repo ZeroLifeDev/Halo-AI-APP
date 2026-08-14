@@ -3,14 +3,14 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Halo mark: a sun core inside its corona, on the brand gradient -->
+    <!-- The halo: an open ring with an orb resting in the gap. -->
     <path
-        android:pathData="M54,38A16,16 0 1,0 54,70A16,16 0 1,0 54,38Z"
-        android:fillColor="#0A0E14" />
+        android:pathData="M38,81.7 A32,32 0 1 1 70,81.7"
+        android:strokeColor="#0A0E14"
+        android:strokeWidth="9"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
     <path
-        android:pathData="M51,20h6v11h-6zM51,77h6v11h-6zM20,51h11v6h-11zM77,51h11v6h-11z"
-        android:fillColor="#0A0E14" />
-    <path
-        android:pathData="M28.6,32.8l4.2,-4.2l7.8,7.8l-4.2,4.2zM67.4,71.6l4.2,-4.2l7.8,7.8l-4.2,4.2zM28.6,75.2l7.8,-7.8l4.2,4.2l-7.8,7.8zM67.4,36.4l7.8,-7.8l4.2,4.2l-7.8,7.8z"
+        android:pathData="M54,79 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0"
         android:fillColor="#0A0E14" />
 </vector>

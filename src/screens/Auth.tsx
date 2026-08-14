@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, ArrowRight, ArrowLeft, Calendar, Lock, Mail, Phone, User } from "lucide-react";
+import { HaloBadge } from "../components/HaloMark";
 import { Btn, Field, SpectrumLine, tap } from "../components/ui";
 import {
   authErrorMessage,
@@ -79,7 +80,8 @@ export function Auth() {
       <Shell>
         <div style={{ flex: 1 }} />
 
-        <div className="eyebrow">Halo Guard</div>
+        <HaloBadge size={56} />
+        <div className="eyebrow" style={{ marginTop: 24 }}>Halo Guard</div>
         <h1
           className="display"
           style={{ fontSize: 32, fontWeight: 700, letterSpacing: "-0.02em", margin: "8px 0 0", lineHeight: 1.15 }}

@@ -12,9 +12,12 @@ import {
   Thermometer,
   Trash2,
   Zap,
+  Globe2,
+  MapPin,
+  Sparkles,
 } from "lucide-react";
 import type { BleDevice } from "@capacitor-community/bluetooth-le";
-import { Btn, Card, EmptyState, Row, ScreenHeader, Sparkline, StatTile, timeAgo } from "../components/ui";
+import { Btn, Card, Row, ScreenHeader, Sparkline, SpectrumLine, StatTile, timeAgo } from "../components/ui";
 import {
   CMD_CALIBRATE,
   CMD_IDENTIFY,
@@ -28,9 +31,12 @@ import {
   type NodeState,
 } from "../lib/device";
 import { useConditions } from "../lib/conditions";
+import { useStore } from "../lib/store";
+import { accuracyNote, estimateLocal } from "../lib/estimate";
 
 export function Device() {
   const c = useConditions();
+  const { place, refreshLocation, locating } = useStore();
   const [node, setNode] = useState<NodeState | null>(null);
   const [found, setFound] = useState<{ device: BleDevice; rssi: number }[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -114,16 +120,47 @@ export function Device() {
         {!connected ? (
           <>
             {found.length === 0 && !scanning && (
-              <EmptyState
-                icon={Radio}
-                title="No device connected"
-                detail="A Halo node measures the magnetic field and radiation right where you live, and adds its own GPS fix. Switch yours on, hold it near your phone, and search."
-                action={
-                  <Btn onClick={scan} icon={Bluetooth}>
-                    Search for my device
-                  </Btn>
-                }
-              />
+              <>
+                <LocalEstimateCard
+                  place={place}
+                  kp={c.kp}
+                  locating={locating}
+                  onLocate={refreshLocation}
+                />
+
+                <Card>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div
+                      style={{
+                        width: 38,
+                        height: 38,
+                        flex: "none",
+                        borderRadius: 11,
+                        background: "rgba(45,212,191,0.12)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Radio size={17} color="var(--teal)" />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="display" style={{ fontWeight: 700, fontSize: 15 }}>
+                        Add a Halo node
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--mid)", marginTop: 5, lineHeight: 1.55 }}>
+                        A node replaces the estimate above with a real measurement of the magnetic
+                        field and radiation where you are, plus its own GPS fix.
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 15 }}>
+                    <Btn onClick={scan} icon={Bluetooth}>
+                      Search for my device
+                    </Btn>
+                  </div>
+                </Card>
+              </>
             )}
 
             {scanning && (
@@ -330,4 +367,105 @@ function bleError(e: unknown): string {
   if (/enabled|disabled|off/i.test(m)) return "Bluetooth is switched off. Turn it on and try again.";
   if (/location/i.test(m)) return "Android needs location switched on to scan for Bluetooth devices. Turn it on and try again.";
   return "Couldn't search for devices. Check Bluetooth is on and try again.";
+}
+
+/**
+ * What we can say about conditions where the user is standing without any
+ * hardware — derived from their GPS position and the global readings, and
+ * labelled as an estimate so it is never mistaken for a measurement.
+ */
+function LocalEstimateCard({
+  place,
+  kp,
+  locating,
+  onLocate,
+}: {
+  place: { lat: number; lon: number; label: string } | null;
+  kp: number | null;
+  locating: boolean;
+  onLocate: () => void;
+}) {
+  if (!place) {
+    return (
+      <Card priority>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, marginBottom: 12 }}>
+          <MapPin size={15} color="var(--violet)" />
+          <span className="eyebrow">Estimate from your phone</span>
+        </div>
+        <div style={{ fontSize: 14, color: "var(--mid)", lineHeight: 1.6, marginBottom: 15 }}>
+          Even without a Halo node we can work out what's happening where you are — turn on location
+          and we'll use your phone's GPS.
+        </div>
+        <Btn onClick={onLocate} disabled={locating} icon={locating ? undefined : MapPin}>
+          {locating ? "Finding you…" : "Use my location"}
+        </Btn>
+      </Card>
+    );
+  }
+
+  const est = estimateLocal(place.lat, place.lon, kp);
+
+  return (
+    <Card priority>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginTop: 4,
+          marginBottom: 14,
+        }}
+      >
+        <span className="chip">
+          <Sparkles size={11} style={{ marginRight: 1 }} />
+          Estimated
+        </span>
+        <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{place.label}</span>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "6px 0 2px" }}>
+        <div className="mono" style={{ fontSize: 40, fontWeight: 600, lineHeight: 1 }}>
+          {est.fieldUT.toFixed(1)}
+        </div>
+        <div className="eyebrow" style={{ marginTop: 8 }}>
+          microtesla · earth's field here
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 18, marginTop: 20, flexWrap: "wrap" }}>
+        <Metric label="Magnetic latitude" value={`${est.magneticLatitude.toFixed(1)}°`} />
+        <Metric label="GPS error now" value={`± ${est.gpsErrorM.toFixed(0)} m`} />
+        <Metric
+          label="Aurora needs"
+          value={est.auroraThreshold == null ? "Out of reach" : `Level ${est.auroraThreshold}`}
+        />
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <div className="eyebrow" style={{ marginBottom: 7 }}>How exposed you are</div>
+        <SpectrumLine value={est.exposure} height={8} />
+      </div>
+
+      <div style={{ fontSize: 13.5, color: "var(--hi)", marginTop: 16, lineHeight: 1.6 }}>
+        {est.summary}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "flex-start",
+          marginTop: 14,
+          paddingTop: 14,
+          borderTop: "1px solid var(--line)",
+          color: "var(--dim)",
+          fontSize: 11.5,
+          lineHeight: 1.5,
+        }}
+      >
+        <Globe2 size={13} style={{ flex: "none", marginTop: 1 }} />
+        {accuracyNote(true)}
+      </div>
+    </Card>
+  );
 }

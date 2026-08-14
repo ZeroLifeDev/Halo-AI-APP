@@ -5,8 +5,57 @@
 import { TOOL_DECLARATIONS, runAction, type ActionResult } from "./actions";
 
 const API_KEY = "AQ.Ab8RN6JbE8kVTqSYG7vUwj_ahpn-BAKSU318jzCOHgFYdv1axQ";
-const MODEL = "gemini-2.5-flash";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+/**
+ * Tried in order. Google retires models without warning — 2.5-flash started
+ * returning "no longer available to new users" — so a failure that looks like
+ * a missing model falls through to the next one instead of dead-ending.
+ */
+const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-flash-latest"];
+
+const endpointFor = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+/** Remembered for the rest of the session once one works. */
+let workingModel: string | null = null;
+
+export function activeModel(): string {
+  return workingModel ?? MODELS[0];
+}
+
+/** True when the failure means "try a different model" rather than "give up". */
+function isModelUnavailable(status: number, body: string): boolean {
+  if (status === 404) return true;
+  return status === 400 && /no longer available|not found|not supported|unsupported/i.test(body);
+}
+
+/**
+ * POSTs to the first model that answers, remembering which one worked.
+ */
+async function callGemini(body: unknown, signal?: AbortSignal): Promise<any> {
+  const order = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
+  let lastStatus = 0;
+  let lastDetail = "";
+
+  for (const model of order) {
+    const res = await fetch(`${endpointFor(model)}?key=${API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      workingModel = model;
+      return res.json();
+    }
+
+    lastStatus = res.status;
+    lastDetail = await res.text().catch(() => "");
+    if (!isModelUnavailable(res.status, lastDetail)) break;
+  }
+
+  throw new Error(errorMessage(lastStatus, lastDetail));
+}
 
 export type ChatRole = "user" | "model";
 
@@ -20,8 +69,8 @@ export type ChatMessage = {
 
 type Part =
   | { text: string }
-  | { functionCall: { name: string; args: Record<string, unknown> } }
-  | { functionResponse: { name: string; response: Record<string, unknown> } };
+  | { functionCall: { name: string; args: Record<string, unknown>; id?: string }; thoughtSignature?: string }
+  | { functionResponse: { name: string; response: Record<string, unknown>; id?: string } };
 
 type Content = { role: "user" | "model"; parts: Part[] };
 
@@ -57,25 +106,15 @@ export async function askHalo(
 
   // The model may chain tools; cap the loop so a bad response can't spin.
   for (let hop = 0; hop < 5; hop++) {
-    const res = await fetch(`${ENDPOINT}?key=${API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: opts.signal,
-      body: JSON.stringify({
+    const data = await callGemini(
+      {
         contents,
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
         generationConfig: { temperature: 0.6, maxOutputTokens: 900 },
-        safetySettings: [],
-      }),
-    });
-
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(errorMessage(res.status, detail));
-    }
-
-    const data = await res.json();
+      },
+      opts.signal,
+    );
     const candidate = data?.candidates?.[0];
     const parts: Part[] = candidate?.content?.parts ?? [];
 
@@ -93,8 +132,10 @@ export async function askHalo(
       };
     }
 
-    // Run every requested tool, then feed the results back for the next hop.
-    contents.push({ role: "model", parts: calls });
+    // Echo the model's turn back verbatim. Gemini 3.x attaches a
+    // thoughtSignature to each functionCall and rejects the follow-up if it
+    // is stripped, so push the original parts rather than rebuilt ones.
+    contents.push({ role: "model", parts: candidate.content.parts });
     const responseParts: Part[] = [];
     for (const call of calls) {
       const result = await runAction(call.functionCall.name, call.functionCall.args);
@@ -102,6 +143,8 @@ export async function askHalo(
       opts.onAction?.(result);
       responseParts.push({
         functionResponse: {
+          // 3.x pairs calls to responses by id; harmless when absent.
+          ...(call.functionCall.id ? { id: call.functionCall.id } : {}),
           name: call.functionCall.name,
           response: { ok: result.ok, summary: result.summary, ...(result.data ?? {}) },
         },
@@ -148,10 +191,7 @@ export async function explainConditions(input: {
       : "In at most three sentences, give a technical readout an amateur radio operator or space weather enthusiast would want, using the real values.";
 
   try {
-    const res = await fetch(`${ENDPOINT}?key=${API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const data = await callGemini({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [
           {
@@ -171,10 +211,7 @@ ${ask}`,
           },
         ],
         generationConfig: { temperature: 0.4, maxOutputTokens: 220 },
-      }),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("").trim();
     return text || null;
   } catch {

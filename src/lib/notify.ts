@@ -14,7 +14,14 @@ import { Capacitor } from "@capacitor/core";
 import { kpToStatus } from "./swpc";
 import type { Settings } from "./store";
 
-const CHANNEL = "halo-storms";
+/**
+ * Android freezes a channel's sound and importance at creation, so changing
+ * either needs a fresh id — hence the version suffix.
+ */
+const CHANNEL = "halo-alerts-v2";
+
+/** res/raw/halo_alert.mp3 — calm but attention-getting. */
+const ALERT_SOUND = "halo_alert";
 const LAST_KEY = "halo:lastAlert";
 
 export async function ensureChannel() {
@@ -25,6 +32,7 @@ export async function ensureChannel() {
     description: "Warnings when solar weather may affect you",
     importance: 5,
     visibility: 1,
+    sound: ALERT_SOUND,
     vibration: true,
     lights: true,
     lightColor: "#2DD4BF",
@@ -112,6 +120,7 @@ export async function maybeAlert(opts: {
         channelId: CHANNEL,
         smallIcon: "ic_stat_halo",
         iconColor: "#2DD4BF",
+        sound: ALERT_SOUND,
         extra: { tag },
       },
     ],
@@ -131,8 +140,67 @@ export async function sendTestAlert() {
         channelId: CHANNEL,
         smallIcon: "ic_stat_halo",
         iconColor: "#2DD4BF",
+        sound: ALERT_SOUND,
         schedule: { at: new Date(Date.now() + 3000) },
       },
     ],
   });
+}
+
+/* ---------------- developer tools ---------------- */
+
+export type TestAlertKind = "storm" | "aurora" | "flare" | "sound";
+
+/** Fires a specific alert immediately, for testing from the developer tab. */
+export async function fireTestAlert(kind: TestAlertKind, delaySeconds = 0) {
+  await ensureChannel();
+
+  const presets: Record<TestAlertKind, { title: string; body: string }> = {
+    storm: {
+      title: "Moderate storm (G2) happening now",
+      body: "Solar activity is affecting your area. GPS may drift and radio may crackle. Tap for what to do.",
+    },
+    aurora: {
+      title: "You might see the northern lights",
+      body: "There's a 45% chance of aurora over you tonight. Find a dark spot away from streetlights and look toward the pole.",
+    },
+    flare: {
+      title: "Strong solar flare detected",
+      body: "The Sun just released an X1.4 flare. Radio signals may fade briefly on the daylight side of Earth.",
+    },
+    sound: {
+      title: "Sound check",
+      body: "This is the Halo Guard alert tone at full notification volume.",
+    },
+  };
+
+  const preset = presets[kind];
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: 90000 + Math.floor(Math.random() * 9000),
+        title: preset.title,
+        body: preset.body,
+        channelId: CHANNEL,
+        smallIcon: "ic_stat_halo",
+        iconColor: "#2DD4BF",
+        sound: ALERT_SOUND,
+        ...(delaySeconds > 0 ? { schedule: { at: new Date(Date.now() + delaySeconds * 1000) } } : {}),
+      },
+    ],
+  });
+}
+
+/** Clears the dedupe memory so the same alert can be tested repeatedly. */
+export async function resetAlertHistory() {
+  await Preferences.remove({ key: LAST_KEY });
+}
+
+export async function pendingAlertCount(): Promise<number> {
+  try {
+    const { notifications } = await LocalNotifications.getPending();
+    return notifications.length;
+  } catch {
+    return 0;
+  }
 }

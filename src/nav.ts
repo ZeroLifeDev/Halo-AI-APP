@@ -8,7 +8,8 @@ export type Screen =
   | "device"
   | "shop"
   | "settings"
-  | "profile";
+  | "profile"
+  | "dev";
 
 /** Screens reachable from the bottom bar, in order. */
 export const TABS = ["now", "forecast", "assistant", "learn", "device"] as const;

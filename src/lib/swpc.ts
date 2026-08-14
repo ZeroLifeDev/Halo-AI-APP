@@ -13,6 +13,30 @@ const BASE = "https://services.swpc.noaa.gov";
 
 type Cached<T> = { at: number; data: T };
 
+/* ---------------- feed diagnostics ----------------
+ * Every fetch records what happened. When a screen says "no reading" the
+ * developer tab can show exactly which feed failed and why, instead of the
+ * failure being swallowed by a catch block. */
+
+export type FeedStatus = {
+  key: string;
+  url: string;
+  ok: boolean;
+  /** HTTP status, or 0 when the request never completed */
+  status: number;
+  rows: number;
+  error: string | null;
+  fromCache: boolean;
+  at: number;
+  ms: number;
+};
+
+const feedStatus = new Map<string, FeedStatus>();
+
+export function feedDiagnostics(): FeedStatus[] {
+  return [...feedStatus.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
 async function readCache<T>(key: string): Promise<Cached<T> | null> {
   try {
     const { value } = await Preferences.get({ key: `swpc:${key}` });
@@ -42,19 +66,85 @@ export type Fetched<T> = {
   error: string | null;
 };
 
-async function get<T>(path: string, key: string, parse: (raw: any) => T): Promise<Fetched<T>> {
-  try {
-    const res = await fetch(`${BASE}${path}`, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`SWPC ${res.status}`);
-    const raw = path.endsWith(".txt") ? await res.text() : await res.json();
-    const data = parse(raw);
-    await writeCache(key, data);
-    return { data, stale: false, at: Date.now(), error: null };
-  } catch (e) {
-    const cached = await readCache<T>(key);
-    if (cached) return { data: cached.data, stale: true, at: cached.at, error: null };
-    return { data: null, stale: false, at: null, error: (e as Error).message };
+async function get<T>(
+  paths: string | string[],
+  key: string,
+  parse: (raw: any) => T,
+): Promise<Fetched<T>> {
+  const candidates = Array.isArray(paths) ? paths : [paths];
+  let lastError = "";
+  let lastStatus = 0;
+
+  for (const path of candidates) {
+    const url = `${BASE}${path}`;
+    const started = Date.now();
+    try {
+      // A hung request must not wedge the whole refresh.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
+      clearTimeout(timer);
+
+      lastStatus = res.status;
+      if (!res.ok) {
+        lastError = `HTTP ${res.status}`;
+        continue;
+      }
+
+      const raw = path.endsWith(".txt") ? await res.text() : await res.json();
+      const data = parse(raw);
+      const rows = Array.isArray(data) ? data.length : data ? 1 : 0;
+
+      if (rows === 0) {
+        lastError = "Feed returned no usable rows";
+        continue;
+      }
+
+      feedStatus.set(key, {
+        key,
+        url,
+        ok: true,
+        status: res.status,
+        rows,
+        error: null,
+        fromCache: false,
+        at: Date.now(),
+        ms: Date.now() - started,
+      });
+      await writeCache(key, data);
+      return { data, stale: false, at: Date.now(), error: null };
+    } catch (e) {
+      const err = e as Error;
+      lastError = err.name === "AbortError" ? "Timed out after 15s" : err.message || String(err);
+    }
   }
+
+  // Everything failed — fall back to the last good copy on disk.
+  const cached = await readCache<T>(key);
+  feedStatus.set(key, {
+    key,
+    url: `${BASE}${candidates[0]}`,
+    ok: false,
+    status: lastStatus,
+    rows: cached ? (Array.isArray(cached.data) ? (cached.data as unknown[]).length : 1) : 0,
+    error: lastError || "Request failed",
+    fromCache: !!cached,
+    at: Date.now(),
+    ms: 0,
+  });
+
+  if (cached) return { data: cached.data, stale: true, at: cached.at, error: null };
+  return { data: null, stale: false, at: null, error: lastError || "Request failed" };
+}
+
+/**
+ * NOAA writes timestamps as "2026-08-14 21:00:00.000" (UTC, space separated).
+ * Normalised explicitly rather than trusting each engine's lenient parsing.
+ */
+function parseUtc(value: string): number {
+  if (!value) return NaN;
+  const iso = value.trim().replace(" ", "T");
+  return Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
 }
 
 /* ---------------- Kp index (geomagnetic activity) ---------------- */
@@ -66,8 +156,8 @@ export function fetchKp() {
   return get<KpPoint[]>("/products/noaa-planetary-k-index.json", "kp", (rows: string[][]) =>
     rows
       .slice(1)
-      .map((r) => ({ time: Date.parse(r[0] + "Z"), kp: parseFloat(r[1]) }))
-      .filter((p) => Number.isFinite(p.kp) && Number.isFinite(p.time)),
+      .map((r) => ({ time: parseUtc(r[0]), kp: parseFloat(r[1]) }))
+      .filter((p) => Number.isFinite(p.kp)),
   );
 }
 
@@ -79,8 +169,8 @@ export function fetchKpForecast() {
     (rows: string[][]) =>
       rows
         .slice(1)
-        .map((r) => ({ time: Date.parse(r[0] + "Z"), kp: parseFloat(r[1]) }))
-        .filter((p) => Number.isFinite(p.kp) && Number.isFinite(p.time)),
+        .map((r) => ({ time: parseUtc(r[0]), kp: parseFloat(r[1]) }))
+        .filter((p) => Number.isFinite(p.kp)),
   );
 }
 
@@ -97,11 +187,13 @@ export type SolarWind = {
 };
 
 export function fetchSolarWind() {
-  return get<SolarWind[]>("/products/solar-wind/plasma-1-day.json", "wind", (rows: string[][]) =>
+  return get<SolarWind[]>(
+    ["/products/solar-wind/plasma-1-day.json", "/products/solar-wind/plasma-2-hour.json"],
+    "wind", (rows: string[][]) =>
     rows
       .slice(1)
       .map((r) => ({
-        time: Date.parse(r[0] + "Z"),
+        time: parseUtc(r[0]),
         density: parseFloat(r[1]),
         speed: parseFloat(r[2]),
         temperature: parseFloat(r[3]),
@@ -119,11 +211,13 @@ export type MagField = {
 };
 
 export function fetchMagField() {
-  return get<MagField[]>("/products/solar-wind/mag-1-day.json", "mag", (rows: string[][]) =>
+  return get<MagField[]>(
+    ["/products/solar-wind/mag-1-day.json", "/products/solar-wind/mag-2-hour.json"],
+    "mag", (rows: string[][]) =>
     rows
       .slice(1)
       .map((r) => ({
-        time: Date.parse(r[0] + "Z"),
+        time: parseUtc(r[0]),
         bz: parseFloat(r[3]),
         bt: parseFloat(r[6]),
       }))
@@ -137,10 +231,12 @@ export type XrayPoint = { time: number; flux: number };
 
 /** Long-band (0.1–0.8 nm) X-ray flux, which defines flare class. */
 export function fetchXray() {
-  return get<XrayPoint[]>("/json/goes/primary/xrays-6-hour.json", "xray", (rows: any[]) =>
+  return get<XrayPoint[]>(
+    ["/json/goes/primary/xrays-6-hour.json", "/json/goes/primary/xrays-1-day.json"],
+    "xray", (rows: any[]) =>
     rows
       .filter((r) => r.energy === "0.1-0.8nm")
-      .map((r) => ({ time: Date.parse(r.time_tag), flux: Number(r.flux) }))
+      .map((r) => ({ time: parseUtc(r.time_tag), flux: Number(r.flux) }))
       .filter((p) => Number.isFinite(p.flux)),
   );
 }
@@ -187,7 +283,7 @@ export function fetchAlerts() {
         const kindMatch = msg.match(/\b(WARNING|ALERT|WATCH|SUMMARY)\b/i);
         return {
           id: String(r.product_id ?? r.issue_datetime),
-          issued: Date.parse((r.issue_datetime ?? "").replace(" ", "T") + "Z"),
+          issued: parseUtc(r.issue_datetime ?? ""),
           kind: (kindMatch?.[1] ?? "NOTICE").toUpperCase(),
           headline: headline.replace(/^(ALERT|WARNING|WATCH|SUMMARY):\s*/i, ""),
           body: msg.trim(),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Bell, Check, MapPin, Sun } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bell, Check, MapPin } from "lucide-react";
+import { HaloBadge } from "../components/HaloMark";
 import { Btn, SpectrumLine, tap } from "../components/ui";
 import { useStore, geomagneticLatitude } from "../lib/store";
 import { requestNotificationPermission } from "../lib/notify";
@@ -144,19 +145,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
           "radial-gradient(120% 62% at 50% 0%, rgba(45,212,191,0.16) 0%, rgba(167,139,250,0.07) 42%, transparent 74%)",
       }}
     >
-      <div
-        style={{
-          width: 60,
-          height: 60,
-          borderRadius: 18,
-          background: "linear-gradient(135deg, var(--teal), var(--violet))",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Sun size={29} color="var(--void)" />
-      </div>
+      <HaloBadge size={60} />
 
       <div style={{ flex: 1, minHeight: 28 }} />
 
@@ -473,20 +462,7 @@ function AlertsStep({
           marginBottom: 18,
         }}
       >
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            flex: "none",
-            borderRadius: 9,
-            background: "linear-gradient(135deg, var(--teal), var(--violet))",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Sun size={17} color="var(--void)" />
-        </div>
+        <HaloBadge size={34} />
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>Halo Guard</span>
