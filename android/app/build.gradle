@@ -16,10 +16,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing is driven by environment variables so no key material
+    // ever lives in the repository. Set HALO_KEYSTORE, HALO_KEYSTORE_PASSWORD,
+    // HALO_KEY_ALIAS and HALO_KEY_PASSWORD to produce a signed release build.
+    signingConfigs {
+        release {
+            if (System.getenv("HALO_KEYSTORE")) {
+                storeFile file(System.getenv("HALO_KEYSTORE"))
+                storePassword System.getenv("HALO_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("HALO_KEY_ALIAS")
+                keyPassword System.getenv("HALO_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("HALO_KEYSTORE")) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
