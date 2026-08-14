@@ -1,15 +1,16 @@
 /**
- * Alerting. Two paths:
- *  - Local notifications, raised by the app whenever it refreshes and sees
- *    conditions cross the user's threshold.
- *  - Push (FCM), so NOAA-driven alerts can reach the phone when the app is shut.
+ * Alerting, via local notifications raised whenever the app refreshes and sees
+ * conditions cross the user's threshold.
+ *
+ * Deliberately no FCM here. The push plugin calls into FirebaseMessaging, which
+ * throws "Default FirebaseApp is not initialized" on the main thread when no
+ * google-services.json is bundled — that kills the process rather than
+ * rejecting a promise. See README for adding push properly once that file and
+ * the Android app exist in the Firebase console.
  */
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { PushNotifications } from "@capacitor/push-notifications";
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor } from "@capacitor/core";
-import { doc, setDoc } from "firebase/firestore";
-import { db, auth } from "./firebase";
 import { kpToStatus } from "./swpc";
 import type { Settings } from "./store";
 
@@ -34,9 +35,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
   try {
     await ensureChannel();
     const local = await LocalNotifications.requestPermissions();
-    const granted = local.display === "granted";
-    if (granted && Capacitor.isNativePlatform()) registerPush().catch(() => {});
-    return granted;
+    return local.display === "granted";
   } catch {
     return false;
   }
@@ -49,26 +48,6 @@ export async function notificationsEnabled(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Registers with FCM and stores the token against the user for server-side pushes. */
-export async function registerPush() {
-  const perm = await PushNotifications.requestPermissions();
-  if (perm.receive !== "granted") return;
-  await PushNotifications.register();
-  PushNotifications.addListener("registration", async (token) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    try {
-      await setDoc(
-        doc(db, "users", uid),
-        { fcmTokens: { [token.value]: { platform: Capacitor.getPlatform(), at: Date.now() } } },
-        { merge: true },
-      );
-    } catch {
-      /* offline; token re-registers on next launch */
-    }
-  });
 }
 
 function inQuietHours(s: Settings): boolean {

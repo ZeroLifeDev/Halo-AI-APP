@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase/app";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   getAuth,
   indexedDBLocalPersistence,
@@ -125,4 +126,93 @@ export function authErrorMessage(e: unknown): string {
     default:
       return "Something went wrong. Please try again.";
   }
+}
+
+/* ---------------- Google sign-in ---------------- */
+
+/**
+ * Resolved at runtime rather than imported, deliberately.
+ *
+ * @capacitor-firebase/authentication builds a FirebaseAuth instance inside its
+ * plugin `load()`, which runs at app startup — and FirebaseAuth.getInstance()
+ * throws "Default FirebaseApp is not initialized" when google-services.json is
+ * absent, killing the process before the first screen. Going through
+ * registerPlugin means the app carries no dependency on the native plugin: if
+ * it isn't installed the call simply rejects, and once it is, this works
+ * unchanged. See README for turning Google sign-in on.
+ */
+type GoogleAuthPlugin = {
+  signInWithGoogle(): Promise<{ credential?: { idToken?: string; accessToken?: string } }>;
+};
+
+const googleAuthPlugin = () => registerPlugin<GoogleAuthPlugin>("FirebaseAuthentication");
+
+/**
+ * Google sign-in: the native account picker on Android, a popup on the web,
+ * with the resulting credential handed to the JS SDK so the rest of the app
+ * sees one consistent `auth.currentUser`.
+ *
+ * Android additionally needs `android/app/google-services.json` and the signing
+ * certificate's SHA-1 registered in the Firebase console.
+ */
+export async function signInWithGoogle(): Promise<User> {
+  const { GoogleAuthProvider, signInWithCredential, signInWithPopup } = await import("firebase/auth");
+
+  if (!Capacitor.isNativePlatform()) {
+    const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+    await ensureProfile(cred.user);
+    return cred.user;
+  }
+
+  const result = await googleAuthPlugin().signInWithGoogle();
+  const idToken = result.credential?.idToken;
+  if (!idToken) throw new Error("google-no-token");
+
+  const credential = GoogleAuthProvider.credential(idToken, result.credential?.accessToken);
+  const cred = await signInWithCredential(auth, credential);
+  await ensureProfile(cred.user);
+  return cred.user;
+}
+
+/** Creates the Firestore profile the first time someone signs in with Google. */
+async function ensureProfile(user: User) {
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    if (snap.exists()) return;
+    await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
+      name: user.displayName ?? "",
+      email: user.email ?? "",
+      photo: user.photoURL ?? "",
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    /* offline — the profile is created on the next successful write */
+  }
+}
+
+/**
+ * True when Google sign-in can actually complete on this device. On Android
+ * that means the Firebase Android config was bundled at build time.
+ */
+export async function googleSignInAvailable(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true;
+  return GOOGLE_CONFIGURED;
+}
+
+/**
+ * Set by the build: Vite replaces this with true only when
+ * android/app/google-services.json was present when the bundle was built.
+ */
+const GOOGLE_CONFIGURED: boolean =
+  (import.meta as unknown as { env: Record<string, string> }).env?.VITE_GOOGLE_SIGNIN === "true";
+
+export function googleErrorMessage(e: unknown): string {
+  const msg = (e as Error)?.message ?? "";
+  if (/no-token/.test(msg)) return "Google didn't return a sign-in token. Please try again.";
+  if (/12501|canceled|cancelled|closed/i.test(msg)) return "";  // user backed out; say nothing
+  if (/10:|DEVELOPER_ERROR/i.test(msg))
+    return "Google sign-in isn't set up for this build yet. Use email and password for now.";
+  if (/network/i.test(msg)) return "No internet connection. Check your signal and try again.";
+  return "Google sign-in didn't work. You can use email and password instead.";
 }

@@ -13,8 +13,8 @@ tells you what to do about it.
 
 | Area | What it does |
 | --- | --- |
-| **Onboarding** | Welcome, language, what the app does, then location and alert permissions — each explained before it's asked for. |
-| **Sign in** | Firebase email/password: create an account, sign in, reset a forgotten password. Settings follow the account across devices. |
+| **Onboarding** | A live reading on the welcome screen, language, a hands-on drag-through of the storm scale, then location and alerts — each earning its permission by showing what it buys you. |
+| **Sign in** | Google, or email and password: create an account, sign in, reset a forgotten password. Settings follow the account across devices. |
 | **Now** | Live storm level, what it means for your GPS and radio, solar wind speed, strongest recent flare, aurora chance overhead. |
 | **Forecast** | The next three days, plus whether the northern lights can actually reach your latitude. |
 | **Event log** | Every official NOAA watch, warning and alert — each with a plain-English translation next to the original text. |
@@ -115,16 +115,52 @@ Requires JDK 21 and the Android SDK (platform 36, build-tools 36).
 
 ---
 
-## Push notifications
+## Firebase Android config
 
-Storm alerts raised by the app itself (local notifications) work out of the box.
+Everything in the app works without it **except** Google sign-in and server-sent
+push. Both need `android/app/google-services.json`, which only you can generate.
 
-For server-sent pushes, add a `google-services.json` for the Android app
-`app.haloguard.mobile` — download it from the Firebase console under Project
-settings → Your apps → Add app → Android — and drop it in `android/app/`. The
-app registers its FCM token against the signed-in user in Firestore
-(`users/{uid}.fcmTokens`) as soon as the file is present. Without it, everything
-else still works.
+This is deliberate and load-bearing: the Firebase Android SDKs build a
+`FirebaseAuth` / `FirebaseMessaging` instance during Capacitor plugin `load()`,
+at app startup. Without the config file that throws
+`Default FirebaseApp is not initialized in this process` on the main thread and
+the process dies before the first screen paints. So neither native plugin is
+installed by default, and the app reaches those APIs through
+`registerPlugin()` at runtime — absent plugin means a rejected promise, not a
+crash.
+
+### Turning on Google sign-in
+
+1. Firebase console → Project settings → Your apps → **Add app → Android**.
+   Package name: `app.haloguard.mobile`.
+2. Add your signing certificate's **SHA-1** on that same screen. For the CI
+   debug builds:
+   ```bash
+   keytool -list -v -keystore ~/.android/debug.keystore \
+           -alias androiddebugkey -storepass android -keypass android
+   ```
+   Use your release keystore's SHA-1 instead once you sign properly. Google
+   sign-in fails with `DEVELOPER_ERROR` if the fingerprint doesn't match the key
+   that signed the APK — this step is the one people skip.
+3. Enable **Authentication → Sign-in method → Google**.
+4. Download `google-services.json` into `android/app/`.
+5. Install the native plugin and rebuild:
+   ```bash
+   npm i @capacitor-firebase/authentication
+   npm run build && npx cap sync android
+   ```
+
+The Google button appears automatically: the Vite build sets
+`VITE_GOOGLE_SIGNIN` from whether `android/app/google-services.json` exists, and
+the sign-in screen hides the button when it doesn't, rather than offering
+something that cannot succeed.
+
+### Push notifications
+
+Storm alerts are raised by the app itself as local notifications and work out of
+the box — the app checks conditions on every refresh and on resume. Server-sent
+push (`@capacitor/push-notifications`) needs the same `google-services.json`
+plus a token-fanout backend; it is not wired up.
 
 ---
 

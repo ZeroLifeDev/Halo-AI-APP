@@ -1,19 +1,9 @@
-import { useState } from "react";
-import {
-  ArrowRight,
-  Bell,
-  Check,
-  Compass,
-  Globe,
-  MapPin,
-  Radio,
-  Shield,
-  Sun,
-  Zap,
-} from "lucide-react";
-import { Btn, Card, SpectrumLine, tap } from "../components/ui";
-import { useStore } from "../lib/store";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, Bell, Check, MapPin, Sun } from "lucide-react";
+import { Btn, SpectrumLine, tap } from "../components/ui";
+import { useStore, geomagneticLatitude } from "../lib/store";
 import { requestNotificationPermission } from "../lib/notify";
+import { fetchKp, kpToStatus } from "../lib/swpc";
 
 export const LANGUAGES = [
   { code: "en", label: "English", native: "English" },
@@ -29,40 +19,48 @@ export const LANGUAGES = [
   { code: "sw", label: "Swahili", native: "Kiswahili" },
 ];
 
-type Step = "welcome" | "language" | "what" | "location" | "alerts";
+const STEPS = ["welcome", "language", "scale", "location", "alerts"] as const;
+type Step = (typeof STEPS)[number];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<Step>("welcome");
   const { settings, setSetting, refreshLocation, locating, place } = useStore();
 
+  const index = STEPS.indexOf(step);
+  const go = (s: Step) => {
+    tap();
+    setStep(s);
+  };
+  const next = () => go(STEPS[Math.min(index + 1, STEPS.length - 1)]);
+  const back = () => go(STEPS[Math.max(index - 1, 0)]);
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      {step === "welcome" && <Welcome onNext={() => setStep("language")} />}
+      {step !== "welcome" && <Progress index={index} onBack={back} />}
+
+      {step === "welcome" && <Welcome onNext={next} />}
+
       {step === "language" && (
-        <LanguagePicker
-          value={settings.language}
-          onPick={(c) => setSetting("language", c)}
-          onNext={() => setStep("what")}
-        />
+        <LanguageStep value={settings.language} onPick={(c) => setSetting("language", c)} onNext={next} />
       )}
-      {step === "what" && <WhatItDoes onNext={() => setStep("location")} />}
+
+      {step === "scale" && <ScaleStep onNext={next} />}
+
       {step === "location" && (
         <LocationStep
           locating={locating}
-          placeLabel={place?.label ?? null}
+          place={place}
           onAllow={async () => {
             const p = await refreshLocation();
             setSetting("useLocation", !!p);
-            setStep("alerts");
           }}
-          onSkip={() => {
-            setSetting("useLocation", false);
-            setStep("alerts");
-          }}
+          onNext={next}
         />
       )}
+
       {step === "alerts" && (
         <AlertsStep
+          placeLabel={place?.label ?? null}
           onAllow={async () => {
             await requestNotificationPermission();
             onDone();
@@ -74,9 +72,66 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   );
 }
 
-/* ---------------- steps ---------------- */
+/* ---------------- chrome ---------------- */
+
+function Progress({ index, onBack }: { index: number; onBack: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "calc(var(--sat) + 18px) 24px 0",
+      }}
+    >
+      <button
+        onClick={onBack}
+        style={{
+          background: "none",
+          border: "none",
+          color: "var(--dim)",
+          padding: 4,
+          cursor: "pointer",
+          display: "flex",
+        }}
+        aria-label="Back"
+      >
+        <ArrowLeft size={19} />
+      </button>
+      <div style={{ flex: 1, display: "flex", gap: 5 }}>
+        {STEPS.slice(1).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              flex: 1,
+              height: 3,
+              borderRadius: 3,
+              background: i < index ? "var(--teal)" : "var(--raised)",
+              transition: "background 300ms ease",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- 1 · welcome ---------------- */
 
 function Welcome({ onNext }: { onNext: () => void }) {
+  const [kp, setKp] = useState<number | null>(null);
+
+  // Show a real reading straight away — the app proves itself before it asks
+  // for anything.
+  useEffect(() => {
+    fetchKp().then((r) => {
+      const rows = r.data ?? [];
+      if (rows.length) setKp(rows[rows.length - 1].kp);
+    });
+  }, []);
+
+  const status = kpToStatus(kp);
+
   return (
     <div
       className="fade-up"
@@ -84,55 +139,88 @@ function Welcome({ onNext }: { onNext: () => void }) {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "center",
-        padding: "32px 28px calc(var(--sab) + 32px)",
+        padding: "calc(var(--sat) + 40px) 28px calc(var(--sab) + 28px)",
         background:
-          "radial-gradient(120% 70% at 50% 0%, rgba(45,212,191,0.14) 0%, rgba(167,139,250,0.06) 40%, transparent 72%)",
+          "radial-gradient(120% 62% at 50% 0%, rgba(45,212,191,0.16) 0%, rgba(167,139,250,0.07) 42%, transparent 74%)",
       }}
     >
       <div
-        className="pulse"
         style={{
-          width: 76,
-          height: 76,
-          borderRadius: 22,
+          width: 60,
+          height: 60,
+          borderRadius: 18,
           background: "linear-gradient(135deg, var(--teal), var(--violet))",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 28,
         }}
       >
-        <Sun size={36} color="var(--void)" />
+        <Sun size={29} color="var(--void)" />
       </div>
 
-      <div className="eyebrow">Real-time telemetry</div>
+      <div style={{ flex: 1, minHeight: 28 }} />
+
       <h1
         className="display"
-        style={{ fontSize: 38, fontWeight: 700, letterSpacing: "-0.02em", margin: "8px 0 0", lineHeight: 1.05 }}
+        style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}
       >
-        Halo Guard
+        The Sun has
+        <br />
+        storms too.
       </h1>
-      <div style={{ width: 96, margin: "16px 0 20px" }}>
+      <div style={{ width: 86, margin: "20px 0 18px" }}>
         <SpectrumLine height={3} />
       </div>
-      <p style={{ color: "var(--mid)", fontSize: 16, lineHeight: 1.55, margin: 0 }}>
-        The Sun has storms too. When one is heading our way, your GPS, phone signal and power can
-        wobble.
-        <br />
-        <br />
-        We'll warn you before it happens — in plain English, with simple steps to follow.
+      <p style={{ color: "var(--mid)", fontSize: 16, lineHeight: 1.62, margin: 0 }}>
+        When one reaches Earth, your GPS drifts, radio crackles, and the sky can light up. Halo Guard
+        tells you when it's coming — and what, if anything, to do.
       </p>
 
-      <div style={{ flex: 1, minHeight: 24 }} />
-      <Btn onClick={onNext} icon={ArrowRight}>
-        Get started
-      </Btn>
+      {/* live proof that this is real data, not a brochure */}
+      <div
+        style={{
+          marginTop: 30,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "14px 16px",
+          borderRadius: 14,
+          background: "var(--panel)",
+          border: "1px solid var(--line)",
+          minHeight: 66,
+        }}
+      >
+        {kp == null ? (
+          <div className="skeleton" style={{ height: 15, flex: 1 }} />
+        ) : (
+          <>
+            <span className="dot pulse" style={{ background: status.color }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="eyebrow">Above you right now</div>
+              <div style={{ fontSize: 14, marginTop: 3 }}>
+                <span style={{ color: status.color, fontWeight: 600 }}>{status.label}</span>
+                <span style={{ color: "var(--dim)" }}> · measured minutes ago</span>
+              </div>
+            </div>
+            <span className="mono" style={{ fontSize: 20, fontWeight: 600 }}>
+              {kp.toFixed(1)}
+            </span>
+          </>
+        )}
+      </div>
+
+      <div style={{ marginTop: 22 }}>
+        <Btn onClick={onNext} icon={ArrowRight}>
+          Set up in a minute
+        </Btn>
+      </div>
     </div>
   );
 }
 
-function LanguagePicker({
+/* ---------------- 2 · language ---------------- */
+
+function LanguageStep({
   value,
   onPick,
   onNext,
@@ -142,14 +230,8 @@ function LanguagePicker({
   onNext: () => void;
 }) {
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "calc(var(--sat) + 28px) 24px calc(var(--sab) + 24px)" }}>
-      <Globe size={26} color="var(--teal)" />
-      <h2 className="display" style={{ fontSize: 25, fontWeight: 700, margin: "14px 0 4px" }}>
-        Choose your language
-      </h2>
-      <p style={{ color: "var(--mid)", fontSize: 14, margin: 0 }}>You can change this at any time.</p>
-
-      <div className="scroll" style={{ flex: 1, margin: "20px 0 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+    <Body title="What language should we use?" blurb="You can change this later in settings.">
+      <div className="scroll" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
         {LANGUAGES.map((l) => {
           const on = value === l.code;
           return (
@@ -169,6 +251,7 @@ function LanguagePicker({
                 border: `1px solid ${on ? "var(--teal)" : "var(--line)"}`,
                 cursor: "pointer",
                 textAlign: "left",
+                color: "var(--hi)",
               }}
             >
               <span>
@@ -185,201 +268,292 @@ function LanguagePicker({
       <Btn onClick={onNext} icon={ArrowRight}>
         Continue
       </Btn>
-    </div>
+    </Body>
   );
 }
 
-function WhatItDoes({ onNext }: { onNext: () => void }) {
-  const items = [
-    {
-      icon: Sun,
-      tint: "var(--amber)",
-      title: "We watch the Sun for you",
-      body: "Live readings from NOAA's space weather satellites, updated every few minutes.",
-    },
-    {
-      icon: Bell,
-      tint: "var(--teal)",
-      title: "You get told before it matters",
-      body: "A clear alert when something is likely to affect where you are — not a stream of noise.",
-    },
-    {
-      icon: Zap,
-      tint: "var(--violet)",
-      title: "You know what to do",
-      body: "Every warning comes with simple steps. No science degree required.",
-    },
-    {
-      icon: Radio,
-      tint: "var(--red)",
-      title: "Add your own sensor",
-      body: "Pair a Halo node to measure what's happening right where you live.",
-    },
-  ];
+/* ---------------- 3 · the scale, hands-on ---------------- */
+
+const LEVELS: { kp: number; head: string; body: string }[] = [
+  { kp: 2, head: "A normal day", body: "Nothing happening. Your phone, maps and internet all behave exactly as usual. Most days look like this." },
+  { kp: 4, head: "A bit restless", body: "You wouldn't notice. Maps might place you a metre or two off, and that's the whole story." },
+  { kp: 5, head: "A small storm", body: "Satnav drifts a few metres and long-distance radio gets patchy. Far enough north or south, the sky starts to glow." },
+  { kp: 6, head: "A real storm", body: "Worth planning around. Download maps before you travel and charge your things — GPS gets noticeably vague." },
+  { kp: 7, head: "A big one", body: "Don't trust satnav for anything precise. Radio drops out. Aurora reaches much further from the poles than usual." },
+  { kp: 9, head: "The rare kind", body: "Hours of unreliable GPS and radio, and power flickers are possible. A handful of times per decade." },
+];
+
+function ScaleStep({ onNext }: { onNext: () => void }) {
+  const [i, setI] = useState(0);
+  const level = LEVELS[i];
+  const status = kpToStatus(level.kp);
+
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "calc(var(--sat) + 28px) 24px calc(var(--sab) + 24px)" }}>
-      <Shield size={26} color="var(--teal)" />
-      <h2 className="display" style={{ fontSize: 25, fontWeight: 700, margin: "14px 0 4px" }}>
-        What Halo Guard does
-      </h2>
-      <p style={{ color: "var(--mid)", fontSize: 14, margin: 0 }}>Four things, and that's it.</p>
+    <Body
+      title="One number, and what it means"
+      blurb="Halo Guard boils everything down to a single storm level. Drag to see what each one actually does to you."
+    >
+      <div
+        style={{
+          background: "var(--panel)",
+          border: "1px solid var(--line)",
+          borderRadius: 18,
+          padding: 20,
+          marginBottom: 18,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <span className="mono" style={{ fontSize: 42, fontWeight: 600, lineHeight: 1 }}>
+            {level.kp}
+          </span>
+          <span style={{ color: status.color, fontWeight: 600, fontSize: 15 }}>{status.label}</span>
+        </div>
 
-      <div className="scroll" style={{ flex: 1, margin: "22px 0 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {items.map((it, i) => (
-          <Card key={it.title} style={{ animationDelay: `${i * 60}ms` }}>
-            <div style={{ display: "flex", gap: 13 }}>
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  flex: "none",
-                  borderRadius: 11,
-                  background: `${it.tint}1f`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <it.icon size={19} color={it.tint} />
-              </div>
-              <div>
-                <div className="display" style={{ fontWeight: 600, fontSize: 15 }}>
-                  {it.title}
-                </div>
-                <div style={{ color: "var(--mid)", fontSize: 13, marginTop: 4, lineHeight: 1.5 }}>{it.body}</div>
-              </div>
-            </div>
-          </Card>
-        ))}
+        <div style={{ margin: "20px 0 10px" }}>
+          <SpectrumLine value={level.kp / 9} height={10} />
+        </div>
+
+        <input
+          type="range"
+          min={0}
+          max={LEVELS.length - 1}
+          step={1}
+          value={i}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (v !== i) tap();
+            setI(v);
+          }}
+          style={{ width: "100%", accentColor: "#2dd4bf", margin: "2px 0 14px" }}
+        />
+
+        <div key={i} className="fade-up">
+          <div className="display" style={{ fontWeight: 700, fontSize: 17 }}>
+            {level.head}
+          </div>
+          <p style={{ color: "var(--mid)", fontSize: 14, lineHeight: 1.6, margin: "7px 0 0", minHeight: 66 }}>
+            {level.body}
+          </p>
+        </div>
       </div>
+
+      <p style={{ color: "var(--dim)", fontSize: 12.5, lineHeight: 1.55, margin: "0 0 16px" }}>
+        You'll never have to remember any of this — every screen says it in words too.
+      </p>
+
+      <div style={{ flex: 1 }} />
       <Btn onClick={onNext} icon={ArrowRight}>
-        Continue
+        Got it
       </Btn>
-    </div>
+    </Body>
   );
 }
+
+/* ---------------- 4 · location ---------------- */
 
 function LocationStep({
   onAllow,
-  onSkip,
+  onNext,
   locating,
+  place,
+}: {
+  onAllow: () => void;
+  onNext: () => void;
+  locating: boolean;
+  place: { lat: number; lon: number; label: string } | null;
+}) {
+  // Once we know where they are, we can say something true and specific about
+  // their location rather than a generic "we use your location" line.
+  const kpNeeded = place
+    ? Math.max(0, Math.min(Math.ceil((66 - Math.abs(geomagneticLatitude(place.lat, place.lon))) / 2), 10))
+    : null;
+
+  return (
+    <Body
+      title={place ? `You're in ${place.label}` : "Where are you?"}
+      blurb={
+        place
+          ? "Now your forecasts are about the sky above you, not the planet in general."
+          : "Storms hit some parts of the world far harder than others. With your location we can tell you what's happening above you specifically."
+      }
+    >
+      {place ? (
+        <div
+          className="fade-up"
+          style={{
+            background: "var(--panel)",
+            border: "1px solid var(--line)",
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 18,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <Check size={16} color="var(--teal)" />
+            <span className="eyebrow">What this tells us</span>
+          </div>
+          <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.62, color: "var(--hi)" }}>
+            {kpNeeded != null && kpNeeded > 9
+              ? "You're close enough to the equator that the northern lights never reach you — so we'll skip aurora alerts and focus on GPS and radio."
+              : `The northern lights become visible from here once the storm level passes about ${kpNeeded}. We'll let you know when that happens.`}
+          </p>
+        </div>
+      ) : (
+        <div
+          style={{
+            background: "var(--panel)",
+            border: "1px dashed var(--line-2)",
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 18,
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-start",
+          }}
+        >
+          <MapPin size={18} color="var(--dim)" style={{ flex: "none", marginTop: 2 }} />
+          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: "var(--mid)" }}>
+            Your coordinates stay on this phone. We never upload them, share them or sell them.
+          </p>
+        </div>
+      )}
+
+      <div style={{ flex: 1 }} />
+
+      {place ? (
+        <Btn onClick={onNext} icon={ArrowRight}>
+          Continue
+        </Btn>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Btn onClick={onAllow} disabled={locating} icon={locating ? undefined : MapPin}>
+            {locating ? "Finding you…" : "Use my location"}
+          </Btn>
+          <button
+            onClick={() => {
+              tap();
+              onNext();
+            }}
+            style={{ background: "none", border: "none", color: "var(--dim)", fontSize: 13.5, padding: 12, cursor: "pointer" }}
+          >
+            Skip — show me the global picture
+          </button>
+        </div>
+      )}
+    </Body>
+  );
+}
+
+/* ---------------- 5 · alerts ---------------- */
+
+function AlertsStep({
+  onAllow,
+  onSkip,
   placeLabel,
 }: {
   onAllow: () => void;
   onSkip: () => void;
-  locating: boolean;
   placeLabel: string | null;
 }) {
   return (
-    <PermissionStep
-      icon={MapPin}
-      title="Where are you?"
-      body="Solar storms affect some parts of the world more than others. With your location we can tell you what's happening above you specifically — including whether you might see the northern lights tonight."
-      note="Your location stays on your phone. We never share or sell it."
-      primaryLabel={locating ? "Finding you…" : placeLabel ? `Found you: ${placeLabel}` : "Use my location"}
-      onPrimary={onAllow}
-      onSkip={onSkip}
-      skipLabel="Not now"
-      busy={locating}
-    />
-  );
-}
-
-function AlertsStep({ onAllow, onSkip }: { onAllow: () => void; onSkip: () => void }) {
-  return (
-    <PermissionStep
-      icon={Bell}
-      title="Get warned in time"
-      body="We'll send you a message before a solar storm reaches you, with plain steps to protect your devices and your connection. That's the whole point of the app — most days you'll hear nothing at all."
-      note="You choose how sensitive alerts are, and can set quiet hours later."
-      primaryLabel="Turn on alerts"
-      onPrimary={onAllow}
-      onSkip={onSkip}
-      skipLabel="Maybe later"
-    />
-  );
-}
-
-function PermissionStep({
-  icon: Icon,
-  title,
-  body,
-  note,
-  primaryLabel,
-  onPrimary,
-  onSkip,
-  skipLabel,
-  busy,
-}: {
-  icon: typeof Bell;
-  title: string;
-  body: string;
-  note: string;
-  primaryLabel: string;
-  onPrimary: () => void;
-  onSkip: () => void;
-  skipLabel: string;
-  busy?: boolean;
-}) {
-  return (
-    <div
-      className="fade-up"
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        padding: "32px 28px calc(var(--sab) + 28px)",
-        textAlign: "center",
-      }}
+    <Body
+      title="This is the whole point"
+      blurb="One message, before it matters. Most weeks you'll hear nothing at all."
     >
+      {/* a realistic preview of the thing they're being asked to allow */}
       <div
+        className="fade-up"
         style={{
-          width: 88,
-          height: 88,
-          borderRadius: 26,
-          background: "rgba(45,212,191,0.12)",
-          border: "1px solid rgba(45,212,191,0.25)",
+          background: "#171b22",
+          border: "1px solid var(--line-2)",
+          borderRadius: 16,
+          padding: 14,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          margin: "0 auto 26px",
+          gap: 12,
+          marginBottom: 18,
         }}
       >
-        <Icon size={38} color="var(--teal)" />
-      </div>
-      <h2 className="display" style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>
-        {title}
-      </h2>
-      <p style={{ color: "var(--mid)", fontSize: 14.5, lineHeight: 1.6, margin: "12px 0 0" }}>{body}</p>
-      <div style={{ margin: "22px auto 0", maxWidth: 300 }}>
-        <div className="chip" style={{ textTransform: "none", letterSpacing: 0, fontFamily: "var(--body)", fontSize: 11.5, lineHeight: 1.4, padding: "8px 12px", height: "auto", display: "block", color: "var(--dim)" }}>
-          {note}
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            flex: "none",
+            borderRadius: 9,
+            background: "linear-gradient(135deg, var(--teal), var(--violet))",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Sun size={17} color="var(--void)" />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Halo Guard</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>now</span>
+          </div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 3 }}>Minor storm arriving tonight</div>
+          <div style={{ fontSize: 12.5, color: "var(--mid)", marginTop: 2, lineHeight: 1.45 }}>
+            {placeLabel ? `Reaching ${placeLabel} around 11pm. ` : "Arriving around 11pm. "}
+            Your maps may drift a few metres — and the sky is worth a look.
+          </div>
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 20 }} />
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Btn onClick={onPrimary} icon={busy ? undefined : Compass} disabled={busy}>
-          {primaryLabel}
+      <p style={{ color: "var(--dim)", fontSize: 12.5, lineHeight: 1.6, margin: 0 }}>
+        You choose how sensitive alerts are, and can set quiet hours, at any time in settings.
+      </p>
+
+      <div style={{ flex: 1 }} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <Btn onClick={onAllow} icon={Bell}>
+          Turn on alerts
         </Btn>
         <button
           onClick={() => {
             tap();
             onSkip();
           }}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--dim)",
-            fontSize: 13.5,
-            padding: 12,
-            cursor: "pointer",
-          }}
+          style={{ background: "none", border: "none", color: "var(--dim)", fontSize: 13.5, padding: 12, cursor: "pointer" }}
         >
-          {skipLabel}
+          Not now
         </button>
       </div>
+    </Body>
+  );
+}
+
+/* ---------------- shared layout ---------------- */
+
+function Body({
+  title,
+  blurb,
+  children,
+}: {
+  title: string;
+  blurb: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fade-up"
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        padding: "26px 24px calc(var(--sab) + 24px)",
+      }}
+    >
+      <h2
+        className="display"
+        style={{ fontSize: 25, fontWeight: 700, margin: 0, letterSpacing: "-0.015em", lineHeight: 1.2 }}
+      >
+        {title}
+      </h2>
+      <p style={{ color: "var(--mid)", fontSize: 14.5, lineHeight: 1.6, margin: "10px 0 22px" }}>{blurb}</p>
+      {children}
     </div>
   );
 }
