@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, MessageCircle, Radio, Sun, TrendingUp } from "lucide-react";
 import type { User } from "firebase/auth";
+import { SplashScreen } from "@capacitor/splash-screen";
+import { StatusBar, Style } from "@capacitor/status-bar";
 
 import { StoreProvider, useStore } from "./lib/store";
 import { ConditionsProvider, useConditions } from "./lib/conditions";
@@ -21,6 +23,7 @@ import { kpToStatus } from "./lib/swpc";
 import { findLesson, type Lesson } from "./content/lessons";
 import { TABS, type Screen, type Tab } from "./nav";
 import { tap } from "./components/ui";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { Onboarding } from "./screens/Onboarding";
 import { Auth } from "./screens/Auth";
@@ -36,12 +39,22 @@ import { Settings } from "./screens/Settings";
 import "./theme.css";
 
 export default function App() {
+  // Dismiss the native splash once React has actually mounted, so a slow first
+  // paint never leaves the user staring at a frozen launch screen.
+  useEffect(() => {
+    SplashScreen.hide().catch(() => {});
+    StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: "#0A0E14" }).catch(() => {});
+  }, []);
+
   return (
-    <StoreProvider>
-      <ConditionsProvider>
-        <Shell />
-      </ConditionsProvider>
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <ConditionsProvider>
+          <Shell />
+        </ConditionsProvider>
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }
 

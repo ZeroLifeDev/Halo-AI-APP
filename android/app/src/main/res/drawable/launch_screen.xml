@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launch window background. Note: no <bitmap> here — @mipmap/ic_launcher is an
+  adaptive-icon XML on API 26+, and <bitmap> can only decode a real raster
+  image, so referencing it that way throws at inflation time.
+-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/halo_void" />
-    <item android:gravity="center">
-        <bitmap android:gravity="center" android:src="@mipmap/ic_launcher" />
-    </item>
+    <item
+        android:drawable="@drawable/launch_mark"
+        android:gravity="center"
+        android:width="96dp"
+        android:height="96dp" />
 </layer-list>

@@ -324,6 +324,9 @@ export function Sparkline({
   height?: number;
   fill?: boolean;
 }) {
+  // useId must run before any early return — the number of hooks a component
+  // calls has to stay constant, and `points` starts empty then fills with data.
+  const id = React.useId();
   if (points.length < 2) return <div className="skeleton" style={{ height }} />;
   const min = Math.min(...points);
   const max = Math.max(...points);
@@ -334,7 +337,6 @@ export function Sparkline({
     const y = height - ((p - min) / span) * (height - 6) - 3;
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   });
-  const id = React.useId();
   return (
     <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ width: "100%", height, display: "block" }}>
       <defs>
