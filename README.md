@@ -69,11 +69,37 @@ and tap it (you'll need to allow installing from unknown sources).
 
 Change the location with `-Root D:\somewhere-else`.
 
-### In CI
+### In CI — the quickest way to get it on a phone
 
-`.github/workflows/android.yml` builds on every push and uploads the APK as a
-workflow artifact called **halo-guard-apk**. Open the run in the Actions tab and
-download it from the summary page.
+`.github/workflows/android.yml` builds on every push and publishes the APK two ways:
+
+- **As a release** at [Releases](../../releases), tagged `build-<run number>`.
+  This is the one to use: open that page on the phone, tap `halo-guard.apk`,
+  and allow installing from this source if Android asks.
+- **As a workflow artifact** called `halo-guard-apk`, on the run's summary page
+  in the Actions tab (needs you to be signed in to GitHub).
+
+Without signing secrets the APK is debug-signed, which sideloads and runs
+normally. To get a properly signed release build, add these repository secrets
+and the workflow switches automatically:
+
+| Secret | What it is |
+| --- | --- |
+| `KEYSTORE_BASE64` | your `.jks` keystore, base64-encoded |
+| `KEYSTORE_PASSWORD` | the keystore password |
+| `KEY_ALIAS` | the key alias inside it |
+| `KEY_PASSWORD` | that key's password |
+
+Create one with:
+
+```bash
+keytool -genkeypair -v -keystore halo-release.jks -keyalg RSA \
+        -keysize 2048 -validity 10000 -alias halo
+base64 -w0 halo-release.jks   # paste into KEYSTORE_BASE64
+```
+
+Keep the keystore file itself somewhere safe and out of the repository — losing
+it means you can never update an app already installed under that signature.
 
 ### Manually, anywhere
 
