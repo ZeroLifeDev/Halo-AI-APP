@@ -1,0 +1,322 @@
+/* ============================================================
+   HALO GUARD — "Aetheric Command" design tokens
+   ============================================================ */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* surfaces */
+  --void: #0a0e14;
+  --bg: #10141a;
+  --panel: #121a2b;
+  --panel-2: #181c22;
+  --raised: #1a2438;
+  --nav: #0d131f;
+  --line: #1e2a42;
+  --line-2: #232e47;
+
+  /* accents */
+  --teal: #2dd4bf;
+  --teal-hi: #57f1db;
+  --teal-soft: #7dd3c0;
+  --violet: #a78bfa;
+  --violet-hi: #cebdff;
+  --amber: #ff9f43;
+  --amber-hi: #ffd166;
+  --red: #ff5d6c;
+
+  /* text */
+  --hi: #eceff7;
+  --mid: #9aa5bd;
+  --dim: #5c6884;
+
+  /* type */
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* the signature Spectrum Line */
+  --spectrum: linear-gradient(
+    90deg,
+    #2dd4bf 0%,
+    #7dd3c0 18%,
+    #ffd166 42%,
+    #ff9f43 62%,
+    #ff5d6c 82%,
+    #c060ff 100%
+  );
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-btn: 14px;
+  --r-card: 16px;
+  --r-xl: 24px;
+
+  /* safe areas (Android gesture nav / status bar) */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--hi);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: 16px; /* prevents Android zoom-on-focus */
+}
+
+/* ---------- shared atoms ---------- */
+
+.mono {
+  font-family: var(--mono);
+}
+.display {
+  font-family: var(--display);
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.spectrum-rule {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--spectrum);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 16px;
+}
+
+.card.priority {
+  position: relative;
+  overflow: hidden;
+}
+.card.priority::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--spectrum);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--nav);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--mid);
+  text-transform: uppercase;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--teal);
+  flex: none;
+}
+
+/* buttons */
+.btn {
+  width: 100%;
+  padding: 15px 18px;
+  border: none;
+  border-radius: var(--r-btn);
+  background: linear-gradient(90deg, var(--teal), var(--teal-soft));
+  color: var(--void);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.btn:active {
+  transform: scale(0.985);
+}
+.btn:disabled {
+  background: var(--raised);
+  color: var(--dim);
+  cursor: not-allowed;
+}
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--teal);
+  color: var(--teal);
+}
+.btn.quiet {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--mid);
+  font-weight: 600;
+}
+
+/* inputs */
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+.field-label {
+  font-size: 12px;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+.field-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.field-box:focus-within {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+}
+.field-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--hi);
+  width: 100%;
+}
+.field-box input::placeholder {
+  color: var(--dim);
+}
+
+/* segmented control */
+.segmented {
+  display: flex;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+.segmented button {
+  flex: 1;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mid);
+  font-family: var(--mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.segmented button[data-on="true"] {
+  background: linear-gradient(90deg, var(--teal), var(--teal-soft));
+  color: var(--void);
+  font-weight: 600;
+  box-shadow: 0 0 18px rgba(45, 212, 191, 0.25);
+}
+
+/* scroll */
+.scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* animation */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fade-up 320ms ease both;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(45, 212, 191, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0);
+  }
+}
+.pulse {
+  animation: pulse-ring 2s infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -300px 0;
+  }
+  100% {
+    background-position: 300px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--raised), #22304a, var(--raised));
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
