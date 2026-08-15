@@ -9,9 +9,14 @@
  *
  *   Service  6e400001-b5a3-f393-e0a9-e50e24dcca9e
  *     ├ 6e400002-…  TELEMETRY   notify   packed struct, little-endian
- *     ├ 6e400003-…  GPS         notify   packed struct, little-endian
  *     ├ 6e400004-…  STATUS      read     battery %, firmware, uptime
  *     └ 6e400005-…  COMMAND     write    1=calibrate 2=identify 3=sleep
+ *                                        4=set level  5=set alert
+ *
+ * The node carries no GPS receiver — the phone's is better in every way that
+ * matters, so position comes from there and is paired with these readings.
+ * Firmware before 1.2 also exposed a GPS characteristic at 6e400003-…; the
+ * subscription below is optional so either version connects cleanly.
  */
 import { BleClient, numbersToDataView, type BleDevice } from "@capacitor-community/bluetooth-le";
 import { Preferences } from "@capacitor/preferences";
@@ -162,9 +167,15 @@ export async function connectNode(deviceId: string, name?: string) {
   await BleClient.startNotifications(deviceId, HALO_SERVICE, CHAR_TELEMETRY, (v) => {
     if (v.byteLength >= 24) emit({ telemetry: decodeTelemetry(v) });
   });
-  await BleClient.startNotifications(deviceId, HALO_SERVICE, CHAR_GPS, (v) => {
-    if (v.byteLength >= 26) emit({ gps: decodeGps(v) });
-  });
+  // Optional: only firmware 1.1 and earlier publishes this. A missing
+  // characteristic must not fail the whole connection.
+  try {
+    await BleClient.startNotifications(deviceId, HALO_SERVICE, CHAR_GPS, (v) => {
+      if (v.byteLength >= 26) emit({ gps: decodeGps(v) });
+    });
+  } catch {
+    /* node has no GPS characteristic — expected on 1.2+ */
+  }
 
   try {
     const s = await BleClient.read(deviceId, HALO_SERVICE, CHAR_STATUS);

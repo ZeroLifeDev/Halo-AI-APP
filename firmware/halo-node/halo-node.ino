@@ -1,16 +1,15 @@
 /*
  * Halo Node — ESP32 firmware for Halo Guard
  * ==========================================================================
- * Measures the local magnetic field and position, streams them to the Halo
- * Guard app over Bluetooth LE, and shows what it is doing on three LEDs.
+ * Measures the local magnetic field, streams it to the Halo Guard app over
+ * Bluetooth LE, and shows what it is doing on three LEDs.
+ *
+ * There is deliberately no GPS module. Position comes from the phone, which
+ * has a far better receiver, an assisted almanac and no cold-start wait — a
+ * bare NEO-6M next to a laptop indoors will often never see a satellite at
+ * all. The app pairs its own fix with this node's readings.
  *
  * ------------------------------ WIRING ------------------------------------
- *
- *   GPS module (NEO-6M / NEO-7M / NEO-8M), UART2 @ 9600 baud
- *     ESP32 GPIO16 (TX)  ──>  GPS RX
- *     ESP32 GPIO17 (RX)  <──  GPS TX
- *     GPS VCC            ──>  3V3   (check your module — some want 5V)
- *     GPS GND            ──>  GND
  *
  *   Status LEDs — each through its own 220Ω–330Ω resistor to GND
  *     GPIO25  ──[R]──>  RED     LED   "low"
@@ -38,8 +37,6 @@
  *   Advertising     slow blue breath — waiting for the phone
  *   Connecting      quick blue double-blink
  *   Connected       sweep up, all three flash together, then settle
- *   Searching GPS   yellow chases while the module hunts for satellites
- *   GPS locked      three fast yellow blinks, then back to the level display
  *   Level display   the LED for the current level, breathing gently
  *   Alert           the level LED pulses hard, twice a second
  *   Calibrating     red↔blue ping-pong for the duration
@@ -48,7 +45,7 @@
  *   Sleeping        a slow fade to dark on all three
  *
  * Animations are driven from a non-blocking scheduler — nothing here calls
- * delay() in the main loop, so BLE and GPS never stall for a light show.
+ * delay() in the main loop, so BLE never stalls for a light show.
  * Commands from the phone are queued by the BLE callback and executed from
  * loop() for the same reason: the callback runs on the Bluetooth task, and
  * blocking it risks a watchdog reset.
@@ -59,7 +56,6 @@
  *
  * ------------------------------ LIBRARIES ---------------------------------
  *   ESP32 BLE Arduino   (bundled with the Espressif ESP32 board package)
- *   TinyGPSPlus         by Mikal Hart
  *   QMC5883LCompass     by MPrograms
  *
  * Board: "ESP32 Dev Module". Packet layouts below are the contract with
@@ -72,7 +68,6 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <esp_sleep.h>
-#include <TinyGPSPlus.h>
 #include <QMC5883LCompass.h>
 #include <math.h>
 
@@ -80,7 +75,8 @@
 
 #define SERVICE_UUID        "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHAR_TELEMETRY_UUID "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-#define CHAR_GPS_UUID       "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+// 6e400003-… was the GPS characteristic. Retired, not reused, so an older
+// app build talking to new firmware simply finds it absent.
 #define CHAR_STATUS_UUID    "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
 #define CHAR_COMMAND_UUID   "6e400005-b5a3-f393-e0a9-e50e24dcca9e"
 
@@ -92,12 +88,6 @@
 static const int PIN_LED_LOW    = 25;   // red
 static const int PIN_LED_MEDIUM = 26;   // yellow
 static const int PIN_LED_HIGH   = 27;   // blue
-
-// GPS on UART2. These are the ESP32's own pins: it transmits on 16 and
-// receives on 17, so the GPS module's TX goes to 17 and its RX to 16.
-static const int PIN_GPS_TX = 16;
-static const int PIN_GPS_RX = 17;
-static const uint32_t GPS_BAUD = 9600;
 
 static const int PIN_GEIGER  = 4;
 static const int PIN_BATTERY = 34;
@@ -125,7 +115,6 @@ static const int PIN_BATTERY = 34;
 static const uint64_t SLEEP_SECONDS = 300;
 
 static const uint32_t TELEMETRY_INTERVAL_MS = 2000;
-static const uint32_t GPS_INTERVAL_MS       = 5000;
 static const uint8_t  LOW_BATTERY_PERCENT   = 15;
 
 /* ============================ LED driver =============================== */
@@ -162,8 +151,6 @@ enum LedMode : uint8_t {
   MODE_ADVERTISING,   // waiting for a phone
   MODE_CONNECTING,    // link being established
   MODE_CONNECTED,     // celebratory sweep, then falls through to level
-  MODE_GPS_SEARCH,    // hunting for satellites
-  MODE_GPS_FIX,       // just locked on
   MODE_LEVEL,         // steady state: show the current level
   MODE_ALERT,         // storm level reached
   MODE_CALIBRATING,
@@ -304,27 +291,6 @@ static void ledTick() {
       break;
     }
 
-    case MODE_GPS_SEARCH: {
-      // A chase along the row, led by yellow: actively looking.
-      const uint32_t step = 220;
-      int active = (t / step) % LED_COUNT;
-      for (int i = 0; i < LED_COUNT; i++) {
-        ledSet((Led)i, i == active ? 180 : 0);
-      }
-      break;
-    }
-
-    case MODE_GPS_FIX: {
-      if (t < 900) {
-        ledSet(LED_LOW, 0);
-        ledSet(LED_HIGH, 0);
-        ledSet(LED_MEDIUM, blinkPhase(t, 100, 300) ? 255 : 0);
-      } else {
-        setLedMode(MODE_LEVEL);
-      }
-      break;
-    }
-
     case MODE_LEVEL: {
       // Steady state. The level's own LED breathes gently, others dark.
       uint8_t b = 40 + breathe(t, 4000) / 2;
@@ -391,15 +357,6 @@ struct __attribute__((packed)) TelemetryPacket {
   int16_t  tempCx100;     // 22  °C × 100
 };                        // 24 bytes
 
-struct __attribute__((packed)) GpsPacket {
-  double  lat;            // 0
-  double  lon;            // 8
-  float   altitude;       // 16  metres
-  float   hdop;           // 20
-  uint8_t satellites;     // 24
-  uint8_t fix;            // 25  1 = valid
-};                        // 26 bytes
-
 struct __attribute__((packed)) StatusPacket {
   uint8_t  battery;       // 0   percent
   uint8_t  fwMajor;       // 1
@@ -420,15 +377,11 @@ static const uint8_t CMD_SET_ALERT = 5;
 /* ============================ state ==================================== */
 
 QMC5883LCompass compass;
-TinyGPSPlus gps;
-HardwareSerial gpsSerial(2);
 
 BLECharacteristic *telemetryChar;
-BLECharacteristic *gpsChar;
 BLECharacteristic *statusChar;
 
 bool connected = false;
-bool hadGpsFix = false;
 
 float baselineField = 0.0f;
 bool  baselineSet   = false;
@@ -438,7 +391,6 @@ uint16_t currentCpm = 0;
 uint32_t lastCpmWindow = 0;
 
 uint32_t lastTelemetry = 0;
-uint32_t lastGps = 0;
 uint8_t  batteryPercent = 100;
 bool     alertActive = false;
 
@@ -647,10 +599,6 @@ void setup() {
   Wire.begin(21, 22);
   compass.init();
 
-  // ESP32 transmits on GPIO16 and receives on GPIO17.
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-  Serial.printf("GPS on UART2 — TX %d, RX %d @ %lu baud\n", PIN_GPS_TX, PIN_GPS_RX, (unsigned long)GPS_BAUD);
-
   BLEDevice::init(DEVICE_NAME);
   BLEServer *server = BLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
@@ -660,10 +608,6 @@ void setup() {
   telemetryChar = service->createCharacteristic(
       CHAR_TELEMETRY_UUID, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
   telemetryChar->addDescriptor(new BLE2902());
-
-  gpsChar = service->createCharacteristic(
-      CHAR_GPS_UUID, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
-  gpsChar->addDescriptor(new BLE2902());
 
   statusChar = service->createCharacteristic(CHAR_STATUS_UUID, BLECharacteristic::PROPERTY_READ);
 
@@ -688,29 +632,10 @@ void setup() {
 void loop() {
   const uint32_t now = millis();
 
-  // GPS needs a steady drip of bytes to parse sentences.
-  while (gpsSerial.available() > 0) gps.encode(gpsSerial.read());
-
   serviceCommands();
   serviceCalibration();
   updateCpm();
   ledTick();
-
-  // Announce the moment a fix appears, and show the hunt while it doesn't.
-  const bool haveFix = gps.location.isValid() && gps.satellites.value() > 0;
-  if (haveFix && !hadGpsFix) {
-    hadGpsFix = true;
-    setLedMode(MODE_GPS_FIX);
-    Serial.printf("GPS fix: %.5f, %.5f (%d sats)\n",
-                  gps.location.lat(), gps.location.lng(), gps.satellites.value());
-  } else if (!haveFix && hadGpsFix) {
-    hadGpsFix = false;
-  } else if (!haveFix && connected && !calibrating && ledMode == MODE_LEVEL && now - modeStartedAt > 6000) {
-    // Idle and still no fix — show that we're looking.
-    setLedMode(MODE_GPS_SEARCH);
-  } else if (haveFix && ledMode == MODE_GPS_SEARCH) {
-    setLedMode(MODE_LEVEL);
-  }
 
   if (connected && now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
     lastTelemetry = now;
@@ -730,21 +655,6 @@ void loop() {
 
     telemetryChar->setValue((uint8_t *)&packet, sizeof(packet));
     telemetryChar->notify();
-  }
-
-  if (connected && now - lastGps >= GPS_INTERVAL_MS) {
-    lastGps = now;
-
-    GpsPacket packet;
-    packet.lat        = haveFix ? gps.location.lat() : 0.0;
-    packet.lon        = haveFix ? gps.location.lng() : 0.0;
-    packet.altitude   = gps.altitude.isValid() ? (float)gps.altitude.meters() : 0.0f;
-    packet.hdop       = gps.hdop.isValid() ? (float)gps.hdop.hdop() : 99.9f;
-    packet.satellites = gps.satellites.isValid() ? (uint8_t)gps.satellites.value() : 0;
-    packet.fix        = haveFix ? 1 : 0;
-
-    gpsChar->setValue((uint8_t *)&packet, sizeof(packet));
-    gpsChar->notify();
   }
 
   // Status is read on demand, so keep it current and watch the battery.

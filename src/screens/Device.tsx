@@ -93,7 +93,7 @@ export function Device() {
 
   const connected = !!node?.connected;
   const reading = node?.telemetry ?? null;
-  const gps = node?.gps ?? null;
+  const position = place;
   const local = interpretLocalField(reading, c.kp);
 
   return (
@@ -262,29 +262,35 @@ export function Device() {
               </div>
             )}
 
-            {/* GPS from the node */}
+            {/* Where the node is. Position comes from the phone. */}
             <Card>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <Satellite size={15} color={gps?.fix ? "var(--teal)" : "var(--dim)"} />
-                <span className="eyebrow">Device GPS</span>
+                <Satellite size={15} color={position ? "var(--teal)" : "var(--dim)"} />
+                <span className="eyebrow">Node position</span>
               </div>
-              {gps?.fix ? (
+              {position ? (
                 <>
                   <div className="mono" style={{ fontSize: 15, letterSpacing: "0.03em" }}>
-                    {gps.lat.toFixed(5)}°, {gps.lon.toFixed(5)}°
+                    {position.lat.toFixed(5)}°, {position.lon.toFixed(5)}°
                   </div>
                   <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
-                    <Metric label="Satellites" value={String(gps.satellites)} />
-                    <Metric label="Altitude" value={`${gps.altitude.toFixed(0)} m`} />
-                    <Metric label="Precision" value={hdopWords(gps.hdop)} />
+                    <Metric label="Place" value={position.label} />
+                    <Metric label="Fix age" value={timeAgo(position.at)} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 14, lineHeight: 1.5 }}>
+                    Located via your phone, which has a far better receiver than a
+                    board-mounted module.
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 13.5, color: "var(--mid)", lineHeight: 1.55 }}>
-                  {gps
-                    ? `Searching for satellites — ${gps.satellites} found so far. This works best near a window or outdoors.`
-                    : "No GPS data yet. Give the device a minute with a clear view of the sky."}
-                </div>
+                <>
+                  <div style={{ fontSize: 13.5, color: "var(--mid)", lineHeight: 1.55, marginBottom: 14 }}>
+                    Turn on location and we'll tag this node's readings with where it is.
+                  </div>
+                  <Btn variant="quiet" onClick={refreshLocation} disabled={locating} icon={MapPin}>
+                    {locating ? "Finding you…" : "Use my location"}
+                  </Btn>
+                </>
               )}
             </Card>
 
@@ -352,13 +358,6 @@ function signalWords(rssi: number): string {
   if (rssi > -60) return "Very close";
   if (rssi > -75) return "Nearby";
   return "Far away";
-}
-
-function hdopWords(hdop: number): string {
-  if (hdop <= 1) return "Excellent";
-  if (hdop <= 2) return "Good";
-  if (hdop <= 5) return "Fair";
-  return "Poor";
 }
 
 function bleError(e: unknown): string {
