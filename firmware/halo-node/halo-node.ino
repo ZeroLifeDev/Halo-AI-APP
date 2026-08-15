@@ -20,9 +20,13 @@
  *   Magnetometer (QMC5883L / HMC5883L), I2C
  *     GPIO21 SDA, GPIO22 SCL, 3V3, GND
  *
- *   Optional
+ *   Optional — OFF by default, switch on in the configuration block below
  *     GPIO4   Geiger tube pulse output (falling edge per count)
  *     GPIO34  Battery sense, through a 2:1 divider
+ *
+ *   Only enable those once the part is physically fitted. A floating analog
+ *   pin reads noise, which the node would otherwise interpret as a flat
+ *   battery and blink the low-battery warning forever.
  *
  * ------------------------------ LED LANGUAGE ------------------------------
  *
@@ -30,7 +34,7 @@
  * even from across a room:
  *
  *   Boot            a single sweep red → yellow → blue, then all fade out
- *   Self test       each LED flashes as its sensor reports in
+ *   Self test       all three flash together — every channel is alive
  *   Advertising     slow blue breath — waiting for the phone
  *   Connecting      quick blue double-blink
  *   Connected       sweep up, all three flash together, then settle
@@ -45,6 +49,13 @@
  *
  * Animations are driven from a non-blocking scheduler — nothing here calls
  * delay() in the main loop, so BLE and GPS never stall for a light show.
+ * Commands from the phone are queued by the BLE callback and executed from
+ * loop() for the same reason: the callback runs on the Bluetooth task, and
+ * blocking it risks a watchdog reset.
+ *
+ * Note on temperature: the original ESP32 has no usable internal sensor, so
+ * the telemetry packet reports 0 °C there. Wire a real sensor and fill it in
+ * readTemperatureCx100() if you need it.
  *
  * ------------------------------ LIBRARIES ---------------------------------
  *   ESP32 BLE Arduino   (bundled with the Espressif ESP32 board package)
@@ -55,10 +66,12 @@
  * src/lib/device.ts in the app — change one, change both.
  */
 
+#include <Wire.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <esp_sleep.h>
 #include <TinyGPSPlus.h>
 #include <QMC5883LCompass.h>
 #include <math.h>
@@ -89,6 +102,28 @@ static const uint32_t GPS_BAUD = 9600;
 static const int PIN_GEIGER  = 4;
 static const int PIN_BATTERY = 34;
 
+/*
+ * Optional hardware. Leave these at 0 unless the part is actually fitted:
+ * an unconnected analog pin floats and reads noise, which previously made the
+ * node believe its battery was flat and blink the low-battery warning forever.
+ */
+#define HAS_BATTERY_SENSE 0
+#define HAS_GEIGER        0
+
+/*
+ * The original ESP32 has no usable internal temperature sensor —
+ * temperatureRead() either fails to link or returns a constant. Enable this
+ * only on S2/S3/C3, or wire a real sensor and read it here.
+ */
+#if defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+  #define HAS_TEMPERATURE 1
+#else
+  #define HAS_TEMPERATURE 0
+#endif
+
+/* How long deep sleep lasts before the node wakes itself again. */
+static const uint64_t SLEEP_SECONDS = 300;
+
 static const uint32_t TELEMETRY_INTERVAL_MS = 2000;
 static const uint32_t GPS_INTERVAL_MS       = 5000;
 static const uint8_t  LOW_BATTERY_PERCENT   = 15;
@@ -114,22 +149,30 @@ static const int LED_PINS[LED_COUNT] = { PIN_LED_LOW, PIN_LED_MEDIUM, PIN_LED_HI
 /** Current duty for each LED, 0–255. */
 static uint8_t ledLevel[LED_COUNT] = { 0, 0, 0 };
 
+/*
+ * Perceptual correction — raw PWM looks far too bright at the low end, which
+ * makes the breathing animations look like stutters. Built once into a table
+ * rather than calling powf() three times per frame.
+ */
+static uint8_t gammaTable[256];
+
+static void buildGammaTable() {
+  for (int i = 0; i < 256; i++) {
+    gammaTable[i] = (uint8_t)(powf(i / 255.0f, 2.2f) * 255.0f + 0.5f);
+  }
+}
+
 static void ledInit() {
+  buildGammaTable();
   for (int i = 0; i < LED_COUNT; i++) {
     LED_ATTACH(LED_PINS[i], i);
     LED_WRITE(LED_PINS[i], i, 0);
   }
 }
 
-/** Perceptual correction — raw PWM looks far too bright at the low end. */
-static uint8_t gamma8(uint8_t v) {
-  float f = v / 255.0f;
-  return (uint8_t)(powf(f, 2.2f) * 255.0f + 0.5f);
-}
-
 static void ledSet(Led led, uint8_t brightness) {
   ledLevel[led] = brightness;
-  LED_WRITE(LED_PINS[led], led, gamma8(brightness));
+  LED_WRITE(LED_PINS[led], led, gammaTable[brightness]);
 }
 
 static void ledSetAll(uint8_t brightness) {
@@ -384,7 +427,6 @@ uint32_t lastCpmWindow = 0;
 
 uint32_t lastTelemetry = 0;
 uint32_t lastGps = 0;
-uint32_t calibrateUntil = 0;
 uint8_t  batteryPercent = 100;
 bool     alertActive = false;
 
@@ -402,46 +444,81 @@ static float readFieldMagnitude(float &bx, float &by, float &bz) {
   return sqrtf(bx * bx + by * by + bz * bz);
 }
 
-/**
- * Averages a burst so one noisy sample can't skew the zero. Runs without
- * blocking the animation: samples are taken across successive loops.
+/*
+ * Calibration averages a burst of samples so one noisy reading can't skew the
+ * zero. It is spread across successive loop() iterations rather than run in a
+ * tight delay() loop: it used to be called straight from the BLE write
+ * callback, which blocked the Bluetooth stack for the better part of a second
+ * and could trip the watchdog.
  */
-static void startCalibration() {
-  setLedMode(MODE_CALIBRATING);
-  calibrateUntil = millis() + 2500;
+static bool     calibrating = false;
+static float    calibrationSum = 0;
+static uint16_t calibrationSamples = 0;
+static uint32_t lastCalibrationSample = 0;
 
-  float sum = 0;
-  const int samples = 24;
-  for (int i = 0; i < samples; i++) {
-    float bx, by, bz;
-    sum += readFieldMagnitude(bx, by, bz);
-    ledTick();      // keep the animation moving during the burst
-    delay(15);
+static const uint16_t CALIBRATION_SAMPLES = 24;
+static const uint32_t CALIBRATION_SPACING_MS = 15;
+
+static void beginCalibration() {
+  calibrating = true;
+  calibrationSum = 0;
+  calibrationSamples = 0;
+  lastCalibrationSample = 0;
+  setLedMode(MODE_CALIBRATING);
+}
+
+/** One step of an in-progress calibration. Returns quickly, every time. */
+static void serviceCalibration() {
+  if (!calibrating) return;
+
+  const uint32_t now = millis();
+  if (now - lastCalibrationSample < CALIBRATION_SPACING_MS) return;
+  lastCalibrationSample = now;
+
+  float bx, by, bz;
+  calibrationSum += readFieldMagnitude(bx, by, bz);
+  calibrationSamples++;
+
+  if (calibrationSamples >= CALIBRATION_SAMPLES) {
+    baselineField = calibrationSum / calibrationSamples;
+    baselineSet = true;
+    calibrating = false;
+    setLedMode(connected ? MODE_LEVEL : MODE_ADVERTISING);
+    Serial.printf("Calibrated. Baseline = %.2f uT\n", baselineField);
   }
-  baselineField = sum / samples;
-  baselineSet = true;
-  Serial.printf("Calibrated. Baseline = %.2f uT\n", baselineField);
 }
 
 static uint8_t readBatteryPercent() {
-  int raw = analogRead(PIN_BATTERY);
-  if (raw <= 0) return 100;           // no divider fitted / running on USB
-  float voltage = (raw / 4095.0f) * 3.3f * 2.0f;
+#if HAS_BATTERY_SENSE
+  // Average a few reads — the ESP32 ADC is noisy enough to swing the estimate.
+  uint32_t sum = 0;
+  for (int i = 0; i < 8; i++) sum += analogRead(PIN_BATTERY);
+  float voltage = (sum / 8.0f / 4095.0f) * 3.3f * 2.0f;
   float pct = (voltage - 3.30f) / (4.20f - 3.30f) * 100.0f;
-  return (uint8_t)constrain(pct, 0.0f, 100.0f);
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  return (uint8_t)pct;
+#else
+  return 100;   // no divider fitted — report full rather than inventing a level
+#endif
 }
 
 static int16_t readTemperatureCx100() {
+#if HAS_TEMPERATURE
   return (int16_t)(temperatureRead() * 100.0f);
+#else
+  return 0;     // no sensor on this chip; the app shows a dash for zero
+#endif
 }
 
 static void updateCpm() {
   uint32_t now = millis();
   if (now - lastCpmWindow < 60000) return;
   noInterrupts();
-  currentCpm = (uint16_t)min<uint32_t>(pulseCount, 65535);
+  uint32_t counted = pulseCount;
   pulseCount = 0;
   interrupts();
+  currentCpm = counted > 65535 ? 65535 : (uint16_t)counted;
   lastCpmWindow = now;
 }
 
@@ -469,43 +546,75 @@ class ServerCallbacks : public BLEServerCallbacks {
   }
 };
 
+/*
+ * The write callback runs on the Bluetooth stack's own task, so it only
+ * records what was asked for — the work happens in loop(). Doing it here
+ * blocked BLE long enough to risk a watchdog reset.
+ *
+ * getData()/getLength() are used instead of getValue() because that returns
+ * std::string on ESP32 core 2.x and Arduino String on 3.x; reading the raw
+ * bytes compiles identically on both.
+ */
+static volatile uint8_t pendingCommand = 0;
+static volatile uint8_t pendingArg = 0;
+
 class CommandCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
-    String value = characteristic->getValue();
-    if (value.length() < 1) return;
+    const uint8_t *data = characteristic->getData();
+    const size_t len = characteristic->getLength();
+    if (data == nullptr || len < 1) return;
 
-    const uint8_t cmd = (uint8_t)value[0];
-    const uint8_t arg = value.length() > 1 ? (uint8_t)value[1] : 0;
-
-    switch (cmd) {
-      case CMD_CALIBRATE:
-        startCalibration();
-        break;
-
-      case CMD_IDENTIFY:
-        setLedMode(MODE_IDENTIFY, connected ? MODE_LEVEL : MODE_ADVERTISING);
-        break;
-
-      case CMD_SET_LEVEL:
-        currentLevel = (Level)constrain(arg, 0, 2);
-        if (ledMode == MODE_LEVEL || ledMode == MODE_ALERT) {
-          setLedMode(alertActive ? MODE_ALERT : MODE_LEVEL);
-        }
-        break;
-
-      case CMD_SET_ALERT:
-        alertActive = arg != 0;
-        setLedMode(alertActive ? MODE_ALERT : MODE_LEVEL);
-        break;
-
-      case CMD_SLEEP:
-        setLedMode(MODE_SLEEPING);
-        for (int i = 0; i < 40; i++) { ledTick(); delay(25); }
-        esp_deep_sleep_start();
-        break;
-    }
+    pendingArg = len > 1 ? data[1] : 0;
+    pendingCommand = data[0];      // set last: loop() polls this
   }
 };
+
+/** Runs any command the phone sent, on the main task where blocking is safe. */
+static void serviceCommands() {
+  const uint8_t cmd = pendingCommand;
+  if (cmd == 0) return;
+  const uint8_t arg = pendingArg;
+  pendingCommand = 0;
+
+  switch (cmd) {
+    case CMD_CALIBRATE:
+      beginCalibration();
+      break;
+
+    case CMD_IDENTIFY:
+      setLedMode(MODE_IDENTIFY, connected ? MODE_LEVEL : MODE_ADVERTISING);
+      break;
+
+    case CMD_SET_LEVEL:
+      currentLevel = (Level)(arg > 2 ? 2 : arg);
+      if (ledMode == MODE_LEVEL || ledMode == MODE_ALERT) {
+        setLedMode(alertActive ? MODE_ALERT : MODE_LEVEL);
+      }
+      break;
+
+    case CMD_SET_ALERT:
+      alertActive = arg != 0;
+      setLedMode(alertActive ? MODE_ALERT : MODE_LEVEL);
+      break;
+
+    case CMD_SLEEP: {
+      // Fade out, then sleep with a timer wake — without a wake source the
+      // node would never come back without a physical reset.
+      setLedMode(MODE_SLEEPING);
+      const uint32_t until = millis() + 1000;
+      while (millis() < until) {
+        ledTick();
+        delay(20);
+      }
+      ledSetAll(0);
+      Serial.printf("Sleeping for %llu seconds\n", (unsigned long long)SLEEP_SECONDS);
+      Serial.flush();
+      esp_sleep_enable_timer_wakeup(SLEEP_SECONDS * 1000000ULL);
+      esp_deep_sleep_start();
+      break;
+    }
+  }
+}
 
 /* ============================ setup ==================================== */
 
@@ -517,9 +626,13 @@ void setup() {
   ledInit();
   setLedMode(MODE_BOOT);
 
+#if HAS_GEIGER
   pinMode(PIN_GEIGER, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_GEIGER), onGeigerPulse, FALLING);
+#endif
 
+  // Start I2C explicitly so the pins are unambiguous across library versions.
+  Wire.begin(21, 22);
   compass.init();
 
   // ESP32 transmits on GPIO16 and receives on GPIO17.
@@ -566,6 +679,8 @@ void loop() {
   // GPS needs a steady drip of bytes to parse sentences.
   while (gpsSerial.available() > 0) gps.encode(gpsSerial.read());
 
+  serviceCommands();
+  serviceCalibration();
   updateCpm();
   ledTick();
 
@@ -578,17 +693,11 @@ void loop() {
                   gps.location.lat(), gps.location.lng(), gps.satellites.value());
   } else if (!haveFix && hadGpsFix) {
     hadGpsFix = false;
-  } else if (!haveFix && connected && ledMode == MODE_LEVEL && now - modeStartedAt > 6000) {
+  } else if (!haveFix && connected && !calibrating && ledMode == MODE_LEVEL && now - modeStartedAt > 6000) {
     // Idle and still no fix — show that we're looking.
     setLedMode(MODE_GPS_SEARCH);
   } else if (haveFix && ledMode == MODE_GPS_SEARCH) {
     setLedMode(MODE_LEVEL);
-  }
-
-  // Calibration finished — return to the steady display.
-  if (calibrateUntil && now > calibrateUntil) {
-    calibrateUntil = 0;
-    setLedMode(connected ? MODE_LEVEL : MODE_ADVERTISING);
   }
 
   if (connected && now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {

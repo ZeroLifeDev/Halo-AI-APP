@@ -7,6 +7,23 @@ streams it to the Halo Guard app over Bluetooth LE.
 
 ## Arduino IDE setup
 
+### Before you flash
+
+Two options in the sketch's configuration block are **off by default**:
+
+```c
+#define HAS_BATTERY_SENSE 0
+#define HAS_GEIGER        0
+```
+
+Turn one on only once that part is actually wired. An unconnected analog pin
+floats and reads noise, which the node reads as a flat battery and answers with
+a permanent low-battery blink.
+
+Temperature is detected automatically: the original ESP32 has no usable
+internal sensor, so telemetry reports 0 °C on that chip. S2/S3/C3 read it
+properly.
+
 ### Libraries
 
 Install from **Tools → Manage Libraries**:
