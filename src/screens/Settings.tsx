@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   Bell,
+  SunMedium,
   BellRing,
   Globe,
   Info,
@@ -71,7 +72,7 @@ export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev:
                 justifyContent: "center",
               }}
             >
-              <User size={22} color="var(--void)" />
+              <User size={22} color="var(--on-accent)" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="display" style={{ fontWeight: 700, fontSize: 16 }}>
@@ -213,6 +214,29 @@ export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev:
 
         {/* app */}
         <Section title="App" icon={Smartphone}>
+          <Card style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <SunMedium size={15} color="var(--amber)" />
+              <span style={{ fontSize: 14.5, fontWeight: 500 }}>Appearance</span>
+            </div>
+            <Segmented
+              value={settings.theme}
+              onChange={(t) => setSetting("theme", t)}
+              options={[
+                { value: "light", label: "Light" },
+                { value: "dark", label: "Dark" },
+                { value: "system", label: "Auto" },
+              ]}
+            />
+            <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 12, lineHeight: 1.5 }}>
+              {settings.theme === "system"
+                ? "Following your phone's setting, and switching with it."
+                : settings.theme === "light"
+                  ? "Always light. Easier to read outdoors in daylight."
+                  : "Always dark. Kinder to your night vision when you're out looking at the sky."}
+            </div>
+          </Card>
+
           <Row
             icon={modeIcon(getMode(settings.mode).icon)}
             tint={getMode(settings.mode).accent}

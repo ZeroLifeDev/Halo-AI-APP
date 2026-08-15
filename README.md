@@ -21,7 +21,7 @@ tells you what to do about it.
 | **Learn** | Fourteen written lessons with quizzes, from "what is solar weather" to building your own storm plan. |
 | **Ask Halo** | Gemini, wired to the app's own controls — it can change your settings and drive your hardware, not just answer. |
 | **My device** | Pair an ESP32 Halo node over Bluetooth for local magnetic-field readings, tagged with the phone's position. Without a node, the same picture is estimated from GPS alone. |
-| **Settings** | Alert sensitivity, alert types, quiet hours, language, units, location, sign out. |
+| **Settings** | Appearance (light, dark or follow the phone), alert sensitivity, alert types, quiet hours, language, units, location, sign out. |
 
 ## No invented data
 
@@ -35,6 +35,28 @@ Every number the app displays comes from a real source:
 
 When a feed can't be reached, the last real reading is served from the on-device
 cache and clearly labelled as such. Nothing is ever fabricated to fill a gap.
+
+## Light and dark
+
+Dark is the default — this is an app people open at night to look at the sky.
+Light exists because dark is unreadable in daylight, which is when most alerts
+actually land. **Auto** follows the phone and switches live, including while the
+app is open.
+
+Every surface and text colour is a token in `src/theme.css`, so a theme is a
+palette swap rather than a second stylesheet. Two details worth knowing:
+
+- `--on-accent` flips. Dark ink reads well on the bright teal used in dark mode,
+  but the deeper teal needed for contrast on white wants white text.
+- "Auto" removes the `data-theme` attribute rather than resolving light or dark
+  in JavaScript, so the CSS media query stays the single source of truth.
+
+Accents are darkened in light mode (`#2dd4bf` → `#0d9488` and so on) because the
+originals are tuned for glowing on near-black and fail contrast on white. The
+Android status bar and the `theme-color` meta tag follow along.
+
+The assistant can switch it: "too bright" or "I can't read this outside" is
+enough.
 
 ## Modes
 

@@ -46,19 +46,51 @@ export default function App() {
   // paint never leaves the user staring at a frozen launch screen.
   useEffect(() => {
     SplashScreen.hide().catch(() => {});
-    StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
-    StatusBar.setBackgroundColor({ color: "#0A0E14" }).catch(() => {});
   }, []);
 
   return (
     <ErrorBoundary>
       <StoreProvider>
+        <ThemeEffect />
         <ConditionsProvider>
           <Shell />
         </ConditionsProvider>
       </StoreProvider>
     </ErrorBoundary>
   );
+}
+
+/**
+ * Keeps the document and the Android system bars in step with the chosen
+ * theme. "system" deliberately removes the attribute rather than resolving it
+ * here, so the CSS media query stays the single source of truth and the app
+ * follows the phone live — including a change made while it is open.
+ */
+function ThemeEffect() {
+  const { settings } = useStore();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (settings.theme === "system") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", settings.theme);
+
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyNative = () => {
+      const dark = settings.theme === "dark" || (settings.theme === "system" && query.matches);
+      // Status bar text is the inverse of the bar itself.
+      StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
+      StatusBar.setBackgroundColor({ color: dark ? "#0A0E14" : "#F4F7FB" }).catch(() => {});
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute("content", dark ? "#0A0E14" : "#F4F7FB");
+    };
+
+    applyNative();
+    query.addEventListener("change", applyNative);
+    return () => query.removeEventListener("change", applyNative);
+  }, [settings.theme]);
+
+  return null;
 }
 
 function Shell() {
@@ -133,6 +165,15 @@ function Shell() {
       set_language: ({ code }) => {
         setSetting("language", String(code).slice(0, 5));
         return { ok: true, summary: `Language set to ${code}` };
+      },
+
+      set_theme: ({ theme }) => {
+        const t = theme === "light" ? "light" : theme === "system" ? "system" : "dark";
+        setSetting("theme", t);
+        return {
+          ok: true,
+          summary: t === "system" ? "Appearance follows your phone now" : `Switched to ${t} mode`,
+        };
       },
 
       set_units: ({ units }) => {
@@ -342,7 +383,7 @@ function BottomNav({
         left: 0,
         right: 0,
         bottom: 0,
-        background: "rgba(13,19,31,0.86)",
+        background: "var(--nav-veil)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
         borderTop: "1px solid var(--line)",

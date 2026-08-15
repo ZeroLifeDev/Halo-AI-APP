@@ -7,9 +7,13 @@ import { DEFAULT_MODE, migrateMode, type ModeId } from "./modes";
 
 export type ReadingMode = ModeId;
 
+/** "system" follows the phone's own light/dark setting. */
+export type Theme = "system" | "light" | "dark";
+
 export type Settings = {
   language: string;
   mode: ModeId;
+  theme: Theme;
   /** Send a notification when Kp reaches at least this value. */
   alertThreshold: number;
   notifyStorms: boolean;
@@ -26,6 +30,7 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   language: "en",
   mode: DEFAULT_MODE,
+  theme: "dark",
   alertThreshold: 5,
   notifyStorms: true,
   notifyAurora: true,

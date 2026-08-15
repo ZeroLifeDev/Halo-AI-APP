@@ -23,6 +23,7 @@ export type ActionName =
   | "set_quiet_hours"
   | "set_language"
   | "set_units"
+  | "set_theme"
   | "update_location"
   | "get_conditions"
   | "preview_alert"
@@ -146,6 +147,22 @@ export const TOOL_DECLARATIONS = [
       type: "OBJECT",
       properties: { code: S("Language code such as en, ar, es, fr, zh, ja, de, pt, it.") },
       required: ["code"],
+    },
+  },
+  {
+    name: "set_theme",
+    description:
+      "Switch the app between light and dark appearance, or have it follow the phone's own setting. Use when the user mentions brightness, glare, reading it outdoors, or night vision.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        theme: {
+          type: "STRING",
+          enum: ["light", "dark", "system"],
+          description: "light, dark, or system to follow the phone.",
+        },
+      },
+      required: ["theme"],
     },
   },
   {

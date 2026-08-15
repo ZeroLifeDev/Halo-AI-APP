@@ -54,7 +54,7 @@ export function HaloBadge({ size = 60 }: { size?: number }) {
         flex: "none",
       }}
     >
-      <HaloMark size={size * 0.56} color="var(--void)" strokeWidth={9} />
+      <HaloMark size={size * 0.56} color="var(--on-accent)" strokeWidth={9} />
     </div>
   );
 }

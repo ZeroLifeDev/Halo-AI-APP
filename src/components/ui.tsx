@@ -286,7 +286,7 @@ export function Toggle({
             width: 21,
             height: 21,
             borderRadius: 999,
-            background: on ? "var(--void)" : "var(--mid)",
+            background: on ? "var(--on-accent)" : "var(--mid)",
             transition: "left 200ms cubic-bezier(.2,.8,.2,1)",
           }}
         />

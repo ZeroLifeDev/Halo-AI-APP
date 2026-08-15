@@ -27,15 +27,15 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
         style={{
           position: "fixed",
           inset: 0,
-          background: "#0a0e14",
-          color: "#eceff7",
+          background: "var(--void)",
+          color: "var(--hi)",
           padding: "calc(env(safe-area-inset-top, 0px) + 32px) 26px 32px",
           fontFamily: "Inter, system-ui, sans-serif",
           overflowY: "auto",
         }}
       >
         <div style={{ fontSize: 21, fontWeight: 700, marginBottom: 10 }}>Something went wrong</div>
-        <div style={{ color: "#9aa5bd", fontSize: 14.5, lineHeight: 1.6, marginBottom: 22 }}>
+        <div style={{ color: "var(--mid)", fontSize: 14.5, lineHeight: 1.6, marginBottom: 22 }}>
           Halo Guard hit an unexpected problem. Restarting usually fixes it — your account and
           settings are safe.
         </div>
@@ -47,8 +47,8 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
             padding: "15px 18px",
             borderRadius: 14,
             border: "none",
-            background: "linear-gradient(90deg,#2dd4bf,#7dd3c0)",
-            color: "#0a0e14",
+            background: "linear-gradient(90deg,var(--teal),var(--teal-soft))",
+            color: "var(--on-accent)",
             fontWeight: 700,
             fontSize: 15,
             cursor: "pointer",
@@ -58,7 +58,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
         </button>
 
         <details style={{ marginTop: 26 }}>
-          <summary style={{ color: "#5c6884", fontSize: 12.5, cursor: "pointer" }}>
+          <summary style={{ color: "var(--dim)", fontSize: 12.5, cursor: "pointer" }}>
             Technical details
           </summary>
           <pre
@@ -67,7 +67,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: 11,
               lineHeight: 1.6,
-              color: "#9aa5bd",
+              color: "var(--mid)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
             }}

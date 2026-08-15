@@ -1,9 +1,22 @@
 /* ============================================================
    HALO GUARD — "Aetheric Command" design tokens
+
+   Two themes. Dark is the original, and the default: this is an app
+   people open at night to look at the sky. Light exists because dark
+   is unreadable in daylight, which is when most alerts actually land.
+
+   Every surface and text colour is a token, so a theme is a palette
+   swap rather than a second stylesheet. `--on-accent` is what sits on
+   top of the teal gradient — it flips, because dark ink reads well on
+   teal in dark mode but white is needed on the deeper teal used on
+   light backgrounds.
    ============================================================ */
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
-:root {
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
   /* surfaces */
   --void: #0a0e14;
   --bg: #10141a;
@@ -11,6 +24,9 @@
   --panel-2: #181c22;
   --raised: #1a2438;
   --nav: #0d131f;
+  /* translucent sheets: nav bar, modal scrims */
+  --nav-veil: rgba(13, 19, 31, 0.86);
+  --scrim: rgba(10, 14, 20, 0.96);
   --line: #1e2a42;
   --line-2: #232e47;
 
@@ -28,6 +44,12 @@
   --hi: #eceff7;
   --mid: #9aa5bd;
   --dim: #5c6884;
+
+  /* what sits on top of the accent gradient */
+  --on-accent: #0a0e14;
+  /* shadow strength — barely visible on dark, load-bearing on light */
+  --shadow: 0 0 0 rgba(0, 0, 0, 0);
+  --shadow-lg: 0 0 0 rgba(0, 0, 0, 0);
 
   /* type */
   --display: "Space Grotesk", system-ui, sans-serif;
@@ -54,6 +76,91 @@
   /* safe areas (Android gesture nav / status bar) */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces — cool greys, so the teal still feels at home */
+  --void: #f4f7fb;
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f1f5fa;
+  --raised: #e7edf6;
+  --nav: #ffffff;
+  --nav-veil: rgba(255, 255, 255, 0.9);
+  --scrim: rgba(244, 247, 251, 0.97);
+  --line: #e2e8f1;
+  --line-2: #d3dce9;
+
+  /* accents, darkened until they pass contrast on white */
+  --teal: #0d9488;
+  --teal-hi: #0f766e;
+  --teal-soft: #14b8a6;
+  --violet: #7c3aed;
+  --violet-hi: #6d28d9;
+  --amber: #b45309;
+  --amber-hi: #d97706;
+  --red: #dc2626;
+
+  /* text */
+  --hi: #0f1722;
+  --mid: #4a5668;
+  --dim: #78859a;
+
+  --on-accent: #ffffff;
+
+  /* depth comes from shadow here, not from tonal layering */
+  --shadow: 0 1px 2px rgba(15, 23, 34, 0.06), 0 2px 8px rgba(15, 23, 34, 0.04);
+  --shadow-lg: 0 4px 16px rgba(15, 23, 34, 0.1);
+}
+
+/*
+ * "System" is the absence of an explicit choice: no data-theme attribute,
+ * so the light palette applies only when the OS asks for it.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) {
+    color-scheme: light;
+
+    --void: #f4f7fb;
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-2: #f1f5fa;
+    --raised: #e7edf6;
+    --nav: #ffffff;
+    --nav-veil: rgba(255, 255, 255, 0.9);
+    --scrim: rgba(244, 247, 251, 0.97);
+    --line: #e2e8f1;
+    --line-2: #d3dce9;
+
+    --teal: #0d9488;
+    --teal-hi: #0f766e;
+    --teal-soft: #14b8a6;
+    --violet: #7c3aed;
+    --violet-hi: #6d28d9;
+    --amber: #b45309;
+    --amber-hi: #d97706;
+    --red: #dc2626;
+
+    --hi: #0f1722;
+    --mid: #4a5668;
+    --dim: #78859a;
+
+    --on-accent: #ffffff;
+
+    --shadow: 0 1px 2px rgba(15, 23, 34, 0.06), 0 2px 8px rgba(15, 23, 34, 0.04);
+    --shadow-lg: 0 4px 16px rgba(15, 23, 34, 0.1);
+  }
+}
+
+/* Colours follow the theme rather than snapping between them. */
+body,
+.card,
+.field-box,
+.segmented,
+.btn {
+  transition: background-color 260ms ease, border-color 260ms ease, color 260ms ease;
 }
 
 * {
@@ -119,6 +226,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   padding: 16px;
+  box-shadow: var(--shadow);
 }
 
 .card.priority {
@@ -163,7 +271,7 @@ select {
   border: none;
   border-radius: var(--r-btn);
   background: linear-gradient(90deg, var(--teal), var(--teal-soft));
-  color: var(--void);
+  color: var(--on-accent);
   font-family: var(--display);
   font-weight: 700;
   font-size: 15px;
@@ -252,7 +360,7 @@ select {
 }
 .segmented button[data-on="true"] {
   background: linear-gradient(90deg, var(--teal), var(--teal-soft));
-  color: var(--void);
+  color: var(--on-accent);
   font-weight: 600;
   box-shadow: 0 0 18px rgba(45, 212, 191, 0.25);
 }
@@ -315,7 +423,7 @@ select {
   }
 }
 .skeleton {
-  background: linear-gradient(90deg, var(--raised), #22304a, var(--raised));
+  background: linear-gradient(90deg, var(--raised), var(--line-2), var(--raised));
   background-size: 600px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: 8px;

@@ -536,7 +536,7 @@ function AlertsStep({
       <div
         className="fade-up"
         style={{
-          background: "#171b22",
+          background: "var(--panel-2)",
           border: "1px solid var(--line-2)",
           borderRadius: 16,
           padding: 14,

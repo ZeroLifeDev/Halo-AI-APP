@@ -86,7 +86,7 @@ export function ModePicker({
       style={{
         position: "absolute",
         inset: 0,
-        background: "rgba(10,14,20,0.96)",
+        background: "var(--scrim)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
         zIndex: 40,
