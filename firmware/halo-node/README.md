@@ -30,16 +30,12 @@ Install from **Tools → Manage Libraries**:
 
 | Library | Author |
 | --- | --- |
-| TinyGPSPlus | Mikal Hart |
 | QMC5883LCompass | MPrograms |
 
 `BLEDevice` and friends ship with the ESP32 board package — nothing to install.
 
-If the build warns `Multiple libraries were found for "TinyGPSPlus.h"`, you have
-both **TinyGPSPlus** and **TinyGPSPlus-ESP32** installed. The warning is
-harmless — the IDE picks one — but delete
-`Documents\Arduino\libraries\TinyGPSPlus-ESP32` so which one gets used stops
-being a coin toss between machines.
+No GPS library is needed because there is no GPS module — see below. If you
+installed TinyGPSPlus earlier you can delete both copies of it.
 
 ### Board settings
 
@@ -58,6 +54,15 @@ sketch and the Arduino core uses it automatically, so the app gets a single 3MB
 slot without anyone having to remember a menu setting. BLE plus GPS plus the
 magnetometer overflows the default two-slot layout, and this node is flashed
 over USB rather than over the air, so the second OTA slot is wasted space.
+
+## Why there is no GPS module
+
+Deliberate. A phone has a multi-constellation receiver, assisted almanac data
+over the network and no cold-start wait. A bare NEO-6M indoors can sit there
+for ten minutes and never see a satellite. The app tags this node's readings
+with the phone's position instead — more accurate, and instant.
+
+Nothing connects to GPIO16/17 any more.
 
 > **Check the chip before anything else.** "ESP32 Dev Module" is for the
 > original ESP32. If your board is an **ESP32-S3**, **ESP32-C3** or **ESP32-S2**,
@@ -141,9 +146,6 @@ board selection or the hardware — not this firmware.
 
 | Part | ESP32 pin | Notes |
 | --- | --- | --- |
-| GPS TX | **GPIO17** (RX) | module transmits, ESP32 listens |
-| GPS RX | **GPIO16** (TX) | ESP32 transmits, module listens |
-| GPS VCC / GND | 3V3 / GND | some modules want 5V — check yours |
 | Red LED — *low* | **GPIO25** | through a 220–330Ω resistor to GND |
 | Yellow LED — *medium* | **GPIO26** | " |
 | Blue LED — *high* | **GPIO27** | " |
@@ -166,8 +168,6 @@ which is fine for the battery divider but cannot drive anything.
 | Advertising | slow blue breath — waiting for the phone |
 | Connecting | quick blue double-blink |
 | Connected | sweep up, all three flash, then settle |
-| Searching for GPS | chase along the row |
-| GPS locked | three fast yellow blinks |
 | Steady | the current level's LED breathing gently |
 | Alert | that LED pulsing hard, twice a second |
 | Calibrating | red ↔ blue ping-pong |
@@ -183,14 +183,9 @@ open the Serial Monitor at **115200** to see why.
 ## First run
 
 1. Flash, then open the Serial Monitor at **115200 baud**.
-2. You should see the banner, then `GPS on UART2 — TX 16, RX 17 @ 9600 baud`,
-   then `Advertising as "Halo Sense"`.
+2. You should see the banner, then `Advertising as "Halo Sense"`.
 3. The LEDs run the boot sweep and settle into the slow blue breath.
 4. Open Halo Guard → **Device** → **Search for my device**.
-5. GPS needs a clear view of the sky and can take several minutes on a cold
-   start. The yellow chase means it is still looking; three blinks mean it has
-   a fix.
-
 If the Serial Monitor shows the banner but the app never finds the node, check
 that Bluetooth **and** location are switched on on the phone — Android requires
 location to be enabled for BLE scanning.

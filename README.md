@@ -20,7 +20,7 @@ tells you what to do about it.
 | **Event log** | Every official NOAA watch, warning and alert — each with a plain-English translation next to the original text. |
 | **Learn** | Fourteen written lessons with quizzes, from "what is solar weather" to building your own storm plan. |
 | **Ask Halo** | Gemini, wired to the app's own controls — it can change your settings and drive your hardware, not just answer. |
-| **My device** | Pair an ESP32 Halo node over Bluetooth for local magnetic-field, radiation and GPS readings. |
+| **My device** | Pair an ESP32 Halo node over Bluetooth for local magnetic-field readings, tagged with the phone's position. Without a node, the same picture is estimated from GPS alone. |
 | **Settings** | Alert sensitivity, alert types, quiet hours, language, units, location, sign out. |
 
 ## No invented data
@@ -31,7 +31,7 @@ Every number the app displays comes from a real source:
   magnetic field, GOES X-ray flux, the OVATION aurora model, and the official
   alerts feed. See `src/lib/swpc.ts`.
 - **Your phone** — GPS position via Capacitor Geolocation.
-- **Your Halo node** — magnetometer, radiation counts and its own GPS fix, over BLE.
+- **Your Halo node** — magnetometer and radiation counts over BLE, positioned by the phone.
 
 When a feed can't be reached, the last real reading is served from the on-device
 cache and clearly labelled as such. Nothing is ever fabricated to fill a gap.
@@ -172,9 +172,6 @@ plus a token-fanout backend; it is not wired up.
 
 | Part | ESP32 pin | Notes |
 | --- | --- | --- |
-| GPS TX | **GPIO17** (RX) | module transmits, ESP32 listens |
-| GPS RX | **GPIO16** (TX) | ESP32 transmits, module listens |
-| GPS VCC / GND | 3V3 / GND | some modules want 5V — check yours |
 | Red LED — *low* | **GPIO25** | through a 220–330Ω resistor to GND |
 | Yellow LED — *medium* | **GPIO26** | " |
 | Blue LED — *high* | **GPIO27** | " |
@@ -214,7 +211,6 @@ throughout.
 | Characteristic | Direction | Contents |
 | --- | --- | --- |
 | `…0002` telemetry | notify | magnetic field XYZ + magnitude + drift, radiation cpm, temperature |
-| `…0003` GPS | notify | latitude, longitude, altitude, HDOP, satellite count, fix flag |
 | `…0004` status | read | battery %, firmware version, uptime |
 | `…0005` command | write | see below |
 
