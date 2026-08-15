@@ -42,10 +42,16 @@ Install from **Tools → Manage Libraries**:
 | Setting | Value | Why it matters |
 | --- | --- | --- |
 | Board | **ESP32 Dev Module** | must match the chip you actually have — see below |
-| Partition Scheme | **Huge APP (3MB No OTA/1MB SPIFFS)** | BLE alone is ~1.3MB; the default scheme is tight |
+| Partition Scheme | *leave it alone* | `partitions.csv` next to the sketch is picked up automatically |
 | Flash Size | **4MB (32Mb)** | or whatever your module really has |
 | Upload Speed | 921600 | drop to 115200 if uploads fail partway |
 | Port | your COM port | close the Serial Monitor first — it holds the port |
+
+**On the partition table:** `firmware/halo-node/partitions.csv` ships with the
+sketch and the Arduino core uses it automatically, so the app gets a single 3MB
+slot without anyone having to remember a menu setting. BLE plus GPS plus the
+magnetometer overflows the default two-slot layout, and this node is flashed
+over USB rather than over the air, so the second OTA slot is wasted space.
 
 > **Check the chip before anything else.** "ESP32 Dev Module" is for the
 > original ESP32. If your board is an **ESP32-S3**, **ESP32-C3** or **ESP32-S2**,

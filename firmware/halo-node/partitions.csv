@@ -1,0 +1,17 @@
+# Halo Node partition table
+#
+# The Arduino ESP32 core picks this up automatically because it sits next to
+# the sketch — no "Partition Scheme" menu setting required, and no way for the
+# wrong one to be selected by accident.
+#
+# Layout is the standard "Huge APP" arrangement for a 4MB module: a single 3MB
+# app slot instead of two 1.9MB OTA slots. BLE plus GPS plus the magnetometer
+# comfortably exceeds what the default two-slot layout allows, and this node is
+# flashed over USB rather than over the air, so the second slot is wasted space.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x300000,
+spiffs,     data, spiffs,   0x310000, 0xE0000,
+coredump,   data, coredump, 0x3F0000, 0x10000,
