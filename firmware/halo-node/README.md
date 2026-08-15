@@ -35,6 +35,12 @@ Install from **Tools → Manage Libraries**:
 
 `BLEDevice` and friends ship with the ESP32 board package — nothing to install.
 
+If the build warns `Multiple libraries were found for "TinyGPSPlus.h"`, you have
+both **TinyGPSPlus** and **TinyGPSPlus-ESP32** installed. The warning is
+harmless — the IDE picks one — but delete
+`Documents\Arduino\libraries\TinyGPSPlus-ESP32` so which one gets used stops
+being a coin toss between machines.
+
 ### Board settings
 
 **Tools →**

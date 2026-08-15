@@ -142,7 +142,37 @@ static const uint8_t  LOW_BATTERY_PERCENT   = 15;
   #define LED_WRITE(pin, channel, duty) ledcWrite((channel), (duty))
 #endif
 
+/* ---------------------------------------------------------------------------
+ * Types come first, and deliberately so.
+ *
+ * The Arduino IDE generates prototypes for every function in a .ino and
+ * injects them immediately before the first function definition. Any enum or
+ * struct used in a signature must therefore be declared above that point, or
+ * the generated prototype refers to a type the compiler has not seen yet and
+ * the build fails with "'Level' does not name a type".
+ * ------------------------------------------------------------------------- */
+
+/** The three status LEDs, in the order they sit on the board. */
 enum Led : uint8_t { LED_LOW = 0, LED_MEDIUM = 1, LED_HIGH = 2, LED_COUNT = 3 };
+
+/** Which animation the LEDs are currently playing. */
+enum LedMode : uint8_t {
+  MODE_BOOT,          // startup sweep
+  MODE_SELFTEST,      // sensors reporting in
+  MODE_ADVERTISING,   // waiting for a phone
+  MODE_CONNECTING,    // link being established
+  MODE_CONNECTED,     // celebratory sweep, then falls through to level
+  MODE_GPS_SEARCH,    // hunting for satellites
+  MODE_GPS_FIX,       // just locked on
+  MODE_LEVEL,         // steady state: show the current level
+  MODE_ALERT,         // storm level reached
+  MODE_CALIBRATING,
+  MODE_IDENTIFY,
+  MODE_SLEEPING,
+};
+
+/** Which LED represents the current reading. */
+enum Level : uint8_t { LEVEL_LOW = 0, LEVEL_MEDIUM = 1, LEVEL_HIGH = 2 };
 
 static const int LED_PINS[LED_COUNT] = { PIN_LED_LOW, PIN_LED_MEDIUM, PIN_LED_HIGH };
 
@@ -180,24 +210,6 @@ static void ledSetAll(uint8_t brightness) {
 }
 
 /* ============================ animations =============================== */
-
-enum LedMode : uint8_t {
-  MODE_BOOT,          // startup sweep
-  MODE_SELFTEST,      // sensors reporting in
-  MODE_ADVERTISING,   // waiting for a phone
-  MODE_CONNECTING,    // link being established
-  MODE_CONNECTED,     // celebratory sweep, then falls through to level
-  MODE_GPS_SEARCH,    // hunting for satellites
-  MODE_GPS_FIX,       // just locked on
-  MODE_LEVEL,         // steady state: show the current level
-  MODE_ALERT,         // storm level reached
-  MODE_CALIBRATING,
-  MODE_IDENTIFY,
-  MODE_SLEEPING,
-};
-
-/** Which LED represents the current reading. */
-enum Level : uint8_t { LEVEL_LOW = 0, LEVEL_MEDIUM = 1, LEVEL_HIGH = 2 };
 
 static LedMode ledMode = MODE_BOOT;
 static Level   currentLevel = LEVEL_LOW;
