@@ -3,6 +3,7 @@
  * settings, open screens and talk to the hardware — not just answer questions.
  */
 import { TOOL_DECLARATIONS, runAction, type ActionResult } from "./actions";
+import { getMode } from "./modes";
 
 const API_KEY = "AQ.Ab8RN6JbE8kVTqSYG7vUwj_ahpn-BAKSU318jzCOHgFYdv1axQ";
 /**
@@ -94,8 +95,10 @@ You are talking to someone who may know nothing about space weather. Your job is
 export async function askHalo(
   history: ChatMessage[],
   userText: string,
-  opts: { onAction?: (r: ActionResult) => void; signal?: AbortSignal } = {},
+  opts: { onAction?: (r: ActionResult) => void; signal?: AbortSignal; mode?: string } = {},
 ): Promise<{ text: string; actions: ActionResult[] }> {
+  const mode = getMode(opts.mode);
+  const systemPrompt = `${SYSTEM_PROMPT}\n\nThe user is in "${mode.label}" mode — ${mode.who}. ${mode.assistantBrief}`;
   const contents: Content[] = history
     .filter((m) => m.text)
     .slice(-12)
@@ -109,7 +112,7 @@ export async function askHalo(
     const data = await callGemini(
       {
         contents,
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
         generationConfig: { temperature: 0.6, maxOutputTokens: 900 },
       },
@@ -183,16 +186,14 @@ export async function explainConditions(input: {
   windSpeed: number | null;
   auroraChance: number | null;
   place: string | null;
-  mode: "simple" | "scientific";
+  mode: string;
 }): Promise<string | null> {
-  const ask =
-    input.mode === "simple"
-      ? "In at most two short sentences of everyday English, tell the user what this means for them today and whether they need to do anything. No numbers unless they matter."
-      : "In at most three sentences, give a technical readout an amateur radio operator or space weather enthusiast would want, using the real values.";
+  const mode = getMode(input.mode);
+  const ask = `The user is in "${mode.label}" mode — ${mode.who}. ${mode.assistantBrief} In at most three sentences, tell them what these readings mean for what they actually do.`;
 
   try {
     const data = await callGemini({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: `${SYSTEM_PROMPT}\n\n${mode.assistantBrief}` }] },
         contents: [
           {
             role: "user",

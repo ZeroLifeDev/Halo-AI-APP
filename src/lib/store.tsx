@@ -3,11 +3,13 @@ import { Preferences } from "@capacitor/preferences";
 import { Geolocation } from "@capacitor/geolocation";
 import { auth, saveSettings } from "./firebase";
 
-export type ReadingMode = "simple" | "scientific";
+import { DEFAULT_MODE, migrateMode, type ModeId } from "./modes";
+
+export type ReadingMode = ModeId;
 
 export type Settings = {
   language: string;
-  mode: ReadingMode;
+  mode: ModeId;
   /** Send a notification when Kp reaches at least this value. */
   alertThreshold: number;
   notifyStorms: boolean;
@@ -23,7 +25,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   language: "en",
-  mode: "simple",
+  mode: DEFAULT_MODE,
   alertThreshold: 5,
   notifyStorms: true,
   notifyAurora: true,
@@ -84,7 +86,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         Preferences.get({ key: KEY_PLACE }),
         Preferences.get({ key: KEY_LESSONS }),
       ]);
-      if (s.value) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(s.value) });
+      if (s.value) {
+        const saved = JSON.parse(s.value);
+        // Older builds stored mode as "simple" | "scientific".
+        saved.mode = migrateMode(saved.mode);
+        setSettings({ ...DEFAULT_SETTINGS, ...saved });
+      }
       if (o.value === "1") setOnboarded(true);
       if (p.value) setPlace(JSON.parse(p.value));
       if (l.value) setLessonsDone(JSON.parse(l.value));

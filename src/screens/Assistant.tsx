@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Send, Sparkles, Wand2 } from "lucide-react";
 import { ScreenHeader, tap } from "../components/ui";
 import { askHalo, type ChatMessage } from "../lib/gemini";
+import { useStore } from "../lib/store";
 import type { ActionResult } from "../lib/actions";
 
 const OPENERS = [
@@ -14,6 +15,7 @@ const OPENERS = [
 ];
 
 export function Assistant() {
+  const { settings } = useStore();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "model",
@@ -43,6 +45,7 @@ export function Assistant() {
     try {
       const { text: reply, actions } = await askHalo(history, trimmed, {
         onAction: (r) => setLiveActions((a) => [...a, r]),
+        mode: settings.mode,
       });
       setMessages((m) => [...m, { role: "model", text: reply, actions, at: Date.now() }]);
     } catch (e) {

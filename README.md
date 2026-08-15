@@ -36,6 +36,29 @@ Every number the app displays comes from a real source:
 When a feed can't be reached, the last real reading is served from the on-device
 cache and clearly labelled as such. Nothing is ever fabricated to fill a gap.
 
+## Modes
+
+The same storm means completely different things to different people. Kp 6 is a
+good night out for an aurora photographer, a rerouted flight for an airline, a
+lost RTK lock for a surveyor, and nothing at all for most people.
+
+| Mode | For | Leads with |
+| --- | --- | --- |
+| **Everyday** | Most people, most days | Will anything I own misbehave |
+| **Aurora** | Chasing the northern lights | Visibility overhead, Bz, wind speed |
+| **Radio** | HF and amateur operators | Flare class, absorption, band conditions |
+| **Aviation** | Pilots and aircrew | HF availability, polar routes, dose |
+| **Precision GPS** | Survey, drones, auto-steer | Expected error, RTK reliability |
+| **Marine** | Sailing and offshore | GNSS drift, long-range radio |
+| **Preparedness** | Power, comms, resilience | Induced currents, grid stress |
+| **Scientific** | Full technical readout | Every measured value, unfiltered |
+
+A mode changes which metrics reach the dashboard, the wording of the summary,
+the concrete advice, the default alert threshold, and how the assistant talks —
+`src/lib/modes.ts` holds all of it. It never changes the underlying data, only
+the emphasis, so switching is cheap and reversible. The assistant can switch for
+you: "I fly out of Reykjavik" is enough.
+
 ## Gemini can actually do things
 
 The assistant isn't a chat box bolted on the side. It's given the app's real

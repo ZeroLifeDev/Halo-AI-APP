@@ -92,11 +92,15 @@ export const TOOL_DECLARATIONS = [
   {
     name: "set_reading_mode",
     description:
-      "Switch between plain-English explanations and full technical detail across the app.",
+      "Switch the app's mode. Each one changes which readings lead the dashboard, how sensitive alerts are, and how technical the explanations get. Pick the one matching what the user actually does — everyday for the general public, aurora for chasers and photographers, radio for HF and amateur operators, aviation for pilots and aircrew, precision for surveying, drones and RTK farming, marine for sailing, grid for infrastructure and preparedness, scientific for the raw physics.",
     parameters: {
       type: "OBJECT",
       properties: {
-        mode: { type: "STRING", enum: ["simple", "scientific"], description: "Which mode to use." },
+        mode: {
+          type: "STRING",
+          enum: ["everyday", "aurora", "radio", "aviation", "precision", "marine", "grid", "scientific"],
+          description: "Which mode to switch to.",
+        },
       },
       required: ["mode"],
     },

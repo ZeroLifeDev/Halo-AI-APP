@@ -5,6 +5,8 @@ import { Btn, SpectrumLine, tap } from "../components/ui";
 import { useStore, geomagneticLatitude } from "../lib/store";
 import { requestNotificationPermission } from "../lib/notify";
 import { fetchKp, kpToStatus } from "../lib/swpc";
+import { MODES, getMode, type ModeId } from "../lib/modes";
+import { modeIcon } from "../components/ModePicker";
 
 export const LANGUAGES = [
   { code: "en", label: "English", native: "English" },
@@ -20,7 +22,7 @@ export const LANGUAGES = [
   { code: "sw", label: "Swahili", native: "Kiswahili" },
 ];
 
-const STEPS = ["welcome", "language", "scale", "location", "alerts"] as const;
+const STEPS = ["welcome", "language", "mode", "scale", "location", "alerts"] as const;
 type Step = (typeof STEPS)[number];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
@@ -43,6 +45,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       {step === "language" && (
         <LanguageStep value={settings.language} onPick={(c) => setSetting("language", c)} onNext={next} />
+      )}
+
+      {step === "mode" && (
+        <ModeStep
+          value={settings.mode}
+          onPick={(m) => {
+            setSetting("mode", m);
+            setSetting("alertThreshold", getMode(m).defaultThreshold);
+          }}
+          onNext={next}
+        />
       )}
 
       {step === "scale" && <ScaleStep onNext={next} />}
@@ -261,7 +274,77 @@ function LanguageStep({
   );
 }
 
-/* ---------------- 3 · the scale, hands-on ---------------- */
+/* ---------------- 3 · what are you using this for ---------------- */
+
+function ModeStep({
+  value,
+  onPick,
+  onNext,
+}: {
+  value: ModeId;
+  onPick: (m: ModeId) => void;
+  onNext: () => void;
+}) {
+  return (
+    <Body
+      title="What will you use this for?"
+      blurb="This decides what we put first and how much detail you get. You can change it whenever you like."
+    >
+      <div className="scroll" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        {MODES.map((m) => {
+          const Icon = modeIcon(m.icon);
+          const on = value === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => {
+                tap();
+                onPick(m.id);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "13px 15px",
+                borderRadius: 13,
+                background: on ? `${m.accent}16` : "var(--panel)",
+                border: `1px solid ${on ? m.accent : "var(--line)"}`,
+                cursor: "pointer",
+                textAlign: "left",
+                color: "var(--hi)",
+              }}
+            >
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  flex: "none",
+                  borderRadius: 10,
+                  background: `${m.accent}1f`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon size={16} color={m.accent} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600 }}>{m.label}</div>
+                <div style={{ fontSize: 12, color: "var(--mid)", marginTop: 1 }}>{m.who}</div>
+              </div>
+              {on && <Check size={16} color={m.accent} style={{ flex: "none" }} />}
+            </button>
+          );
+        })}
+      </div>
+      <Btn onClick={onNext} icon={ArrowRight}>
+        Continue
+      </Btn>
+    </Body>
+  );
+}
+
+/* ---------------- 4 · the scale, hands-on ---------------- */
 
 const LEVELS: { kp: number; head: string; body: string }[] = [
   { kp: 2, head: "A normal day", body: "Nothing happening. Your phone, maps and internet all behave exactly as usual. Most days look like this." },

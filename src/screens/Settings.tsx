@@ -20,6 +20,8 @@ import { auth, signOut } from "../lib/firebase";
 import { notificationsEnabled, requestNotificationPermission, sendTestAlert } from "../lib/notify";
 import { kpToStatus } from "../lib/swpc";
 import { LANGUAGES } from "./Onboarding";
+import { getMode } from "../lib/modes";
+import { ModePicker, modeIcon } from "../components/ModePicker";
 
 export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev: () => void }) {
   const { settings, setSetting, place, refreshLocation, locating } = useStore();
@@ -28,6 +30,7 @@ export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev:
   const [showLangs, setShowLangs] = useState(false);
   // Seven taps on the version line opens the developer tab.
   const [taps, setTaps] = useState(0);
+  const [pickingMode, setPickingMode] = useState(false);
   const devUnlocked = taps >= 7;
 
   useEffect(() => {
@@ -36,6 +39,17 @@ export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev:
 
   const user = auth.currentUser;
   const threshold = kpToStatus(settings.alertThreshold);
+
+  if (pickingMode) {
+    return (
+      <ModePicker
+        value={settings.mode}
+        onPick={(m) => setSetting("mode", m)}
+        onClose={() => setPickingMode(false)}
+        onThresholdSuggest={(kp) => setSetting("alertThreshold", kp)}
+      />
+    );
+  }
 
   return (
     <div className="scroll" style={{ height: "100%", paddingBottom: 96 }}>
@@ -199,22 +213,14 @@ export function Settings({ onBack, onOpenDev }: { onBack: () => void; onOpenDev:
 
         {/* app */}
         <Section title="App" icon={Smartphone}>
-          <Card>
-            <div style={{ fontSize: 14.5, fontWeight: 500, marginBottom: 12 }}>How should we explain things?</div>
-            <Segmented
-              value={settings.mode}
-              onChange={(m) => setSetting("mode", m)}
-              options={[
-                { value: "simple", label: "Simple" },
-                { value: "scientific", label: "Scientific" },
-              ]}
-            />
-            <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 12, lineHeight: 1.5 }}>
-              {settings.mode === "simple"
-                ? "Plain English, no jargon. Recommended for most people."
-                : "Full technical detail with real units and values."}
-            </div>
-          </Card>
+          <Row
+            icon={modeIcon(getMode(settings.mode).icon)}
+            tint={getMode(settings.mode).accent}
+            title={`${getMode(settings.mode).label} mode`}
+            detail={getMode(settings.mode).who}
+            onClick={() => setPickingMode(true)}
+            right={<span className="mono" style={{ fontSize: 11, color: getMode(settings.mode).accent }}>CHANGE</span>}
+          />
 
           <Card style={{ marginTop: 12 }}>
             <Toggle

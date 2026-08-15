@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Bell,
+  Magnet,
+  Waves,
+  Zap,
   CloudOff,
   Compass,
   Eye,
@@ -20,7 +23,6 @@ import {
   CountUp,
   Row,
   ScreenHeader,
-  Segmented,
   Sparkline,
   SpectrumLine,
   StatTile,
@@ -28,14 +30,33 @@ import {
 } from "../components/ui";
 import { useConditions } from "../lib/conditions";
 import { useStore } from "../lib/store";
-import { gpsImpact, kpToStatus, plainSummary, radioImpact, technicalSummary } from "../lib/swpc";
+import { gpsImpact, kpToStatus, radioImpact } from "../lib/swpc";
 import { explainConditions } from "../lib/gemini";
+import { getMode, type MetricId } from "../lib/modes";
+import { estimateLocal } from "../lib/estimate";
+import { ModeChip, ModePicker } from "../components/ModePicker";
 import type { Screen } from "../nav";
 
 export function Now({ go }: { go: (s: Screen) => void }) {
   const c = useConditions();
   const { settings, setSetting, place, refreshLocation, locating } = useStore();
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [pickingMode, setPickingMode] = useState(false);
+
+  const mode = getMode(settings.mode);
+  const estimate = place ? estimateLocal(place.lat, place.lon, c.kp) : null;
+
+  // Everything a mode needs to speak in its own terms.
+  const modeConditions = {
+    kp: c.kp,
+    flareClass: c.flareClass,
+    windSpeed: c.wind?.speed ?? null,
+    bz: c.mag?.bz ?? null,
+    auroraChance: c.auroraChance,
+    gpsErrorM: estimate?.gpsErrorM ?? null,
+    place: place?.label ?? null,
+  };
+  const modeAdvice = mode.advice(modeConditions);
 
   const status = kpToStatus(c.kp);
   const gps = gpsImpact(c.kp);
@@ -64,9 +85,18 @@ export function Now({ go }: { go: (s: Screen) => void }) {
   const fallback =
     c.kp == null
       ? "We can't tell you what's happening until we get a reading. Check your connection and try again."
-      : settings.mode === "simple"
-        ? plainSummary(c.kp, c.flareClass)
-        : technicalSummary(c.kp, c.wind, c.mag, c.flareClass);
+      : mode.summarise(modeConditions);
+
+  if (pickingMode) {
+    return (
+      <ModePicker
+        value={settings.mode}
+        onPick={(m) => setSetting("mode", m)}
+        onClose={() => setPickingMode(false)}
+        onThresholdSuggest={(kp) => setSetting("alertThreshold", kp)}
+      />
+    );
+  }
 
   return (
     <div className="scroll" style={{ height: "100%", paddingBottom: 96 }}>
@@ -105,14 +135,7 @@ export function Now({ go }: { go: (s: Screen) => void }) {
       />
 
       <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <Segmented
-          value={settings.mode}
-          onChange={(m) => setSetting("mode", m)}
-          options={[
-            { value: "simple", label: "Simple" },
-            { value: "scientific", label: "Scientific" },
-          ]}
-        />
+        <ModeChip mode={settings.mode} onClick={() => setPickingMode(true)} />
 
         {/* headline gauge */}
         <Card priority>
@@ -188,9 +211,7 @@ export function Now({ go }: { go: (s: Screen) => void }) {
         <Card>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
             <Sparkles size={14} color="var(--violet)" />
-            <span className="eyebrow">
-              {settings.mode === "simple" ? "What this means for you" : "Technical readout"}
-            </span>
+            <span className="eyebrow">{mode.label === "Scientific" ? "Readout" : "What this means for you"}</span>
           </div>
           <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "var(--hi)" }}>
             {c.loading ? (
@@ -204,43 +225,30 @@ export function Now({ go }: { go: (s: Screen) => void }) {
           </div>
         </Card>
 
+        {modeAdvice.length > 0 && (
+          <Card style={{ borderColor: `${mode.accent}55`, background: `${mode.accent}0d` }}>
+            <div className="eyebrow" style={{ color: mode.accent, marginBottom: 10 }}>
+              What to do
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {modeAdvice.map((a) => (
+                <div key={a} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, lineHeight: 1.5 }}>
+                  <span style={{ color: mode.accent, flex: "none" }}>·</span>
+                  {a}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {/* impacts */}
         {c.kp != null && (
-          <>
-            <div style={{ display: "flex", gap: 12 }}>
-          <StatTile
-            icon={Compass}
-            label="Satellite navigation"
-            value={gps.label}
-            status={gps.detail}
-            statusColor={gps.color}
-          />
-          <StatTile
-            icon={Radio}
-            label="Radio signal"
-            value={radio.label}
-            status={radio.detail}
-            statusColor={radio.color}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: 12 }}>
-          <StatTile
-            icon={Wind}
-            label="Solar wind speed"
-            value={c.wind ? `${c.wind.speed.toFixed(0)} km/s` : "—"}
-            status={c.wind ? (c.wind.speed > 600 ? "Fast" : c.wind.speed > 450 ? "Elevated" : "Normal") : undefined}
-            statusColor={c.wind && c.wind.speed > 600 ? "var(--amber)" : "var(--teal)"}
-          />
-          <StatTile
-            icon={AlertTriangle}
-            label="Strongest recent flare"
-            value={c.flareClass}
-            status={/^[MX]/.test(c.flareClass) ? "Notable" : "Background"}
-            statusColor={/^X/.test(c.flareClass) ? "var(--red)" : /^M/.test(c.flareClass) ? "var(--amber)" : "var(--teal)"}
-          />
-            </div>
-          </>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {mode.metrics
+              .filter((id) => id !== "kp")
+              .map((id) => renderMetric(id, { c, gps, radio, estimate }))
+              .filter(Boolean)}
+          </div>
         )}
 
         {/* aurora */}
@@ -332,4 +340,103 @@ export function Now({ go }: { go: (s: Screen) => void }) {
       </div>
     </div>
   );
+}
+
+/** One dashboard tile per metric a mode asked for. */
+function renderMetric(
+  id: MetricId,
+  ctx: {
+    c: ReturnType<typeof useConditions>;
+    gps: { label: string; detail: string; color: string };
+    radio: { label: string; detail: string; color: string };
+    estimate: { gpsErrorM: number } | null;
+  },
+) {
+  const { c, gps, radio, estimate } = ctx;
+
+  switch (id) {
+    case "gps":
+      return (
+        <StatTile
+          key={id}
+          icon={Compass}
+          label="Satellite navigation"
+          value={gps.label}
+          status={estimate ? `± ${estimate.gpsErrorM.toFixed(0)} m` : gps.detail}
+          statusColor={gps.color}
+        />
+      );
+    case "radio":
+      return (
+        <StatTile key={id} icon={Radio} label="Radio signal" value={radio.label} status={radio.detail} statusColor={radio.color} />
+      );
+    case "wind":
+      return (
+        <StatTile
+          key={id}
+          icon={Wind}
+          label="Solar wind speed"
+          value={c.wind ? `${c.wind.speed.toFixed(0)} km/s` : "—"}
+          status={c.wind ? (c.wind.speed > 600 ? "Fast" : c.wind.speed > 450 ? "Elevated" : "Normal") : undefined}
+          statusColor={c.wind && c.wind.speed > 600 ? "var(--amber)" : "var(--teal)"}
+        />
+      );
+    case "flare":
+      return (
+        <StatTile
+          key={id}
+          icon={AlertTriangle}
+          label="Strongest recent flare"
+          value={c.flareClass}
+          status={/^[MX]/.test(c.flareClass) ? "Notable" : "Background"}
+          statusColor={/^X/.test(c.flareClass) ? "var(--red)" : /^M/.test(c.flareClass) ? "var(--amber)" : "var(--teal)"}
+        />
+      );
+    case "aurora":
+      return (
+        <StatTile
+          key={id}
+          icon={Eye}
+          label="Aurora overhead"
+          value={c.auroraChance != null ? `${c.auroraChance}%` : "—"}
+          status={c.auroraChance != null && c.auroraChance >= 20 ? "Worth looking" : "Unlikely"}
+          statusColor={c.auroraChance != null && c.auroraChance >= 20 ? "var(--violet)" : "var(--dim)"}
+        />
+      );
+    case "bz":
+      return (
+        <StatTile
+          key={id}
+          icon={Magnet}
+          label="Field direction (Bz)"
+          value={c.mag ? `${c.mag.bz.toFixed(1)} nT` : "—"}
+          status={c.mag ? (c.mag.bz < -5 ? "Southward" : "Northward") : undefined}
+          statusColor={c.mag && c.mag.bz < -5 ? "var(--amber)" : "var(--teal)"}
+        />
+      );
+    case "density":
+      return (
+        <StatTile
+          key={id}
+          icon={Waves}
+          label="Wind density"
+          value={c.wind ? `${c.wind.density.toFixed(1)} p/cm³` : "—"}
+          status={c.wind && c.wind.density > 20 ? "Dense" : "Normal"}
+          statusColor={c.wind && c.wind.density > 20 ? "var(--amber)" : "var(--teal)"}
+        />
+      );
+    case "protons":
+      return (
+        <StatTile
+          key={id}
+          icon={Zap}
+          label="Radiation at altitude"
+          value={/^X/.test(c.flareClass) ? "Elevated" : "Normal"}
+          status={/^X/.test(c.flareClass) ? "Polar routes" : "Background"}
+          statusColor={/^X/.test(c.flareClass) ? "var(--amber)" : "var(--teal)"}
+        />
+      );
+    default:
+      return null;
+  }
 }

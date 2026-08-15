@@ -20,6 +20,7 @@ import {
   sendCommand,
 } from "./lib/device";
 import { kpToStatus } from "./lib/swpc";
+import { getMode } from "./lib/modes";
 import { findLesson, type Lesson } from "./content/lessons";
 import { TABS, type Screen, type Tab } from "./nav";
 import { tap } from "./components/ui";
@@ -92,8 +93,10 @@ function Shell() {
       },
 
       set_reading_mode: ({ mode }) => {
-        setSetting("mode", mode === "scientific" ? "scientific" : "simple");
-        return { ok: true, summary: `Switched to ${mode} explanations` };
+        const picked = getMode(mode);
+        setSetting("mode", picked.id);
+        setSetting("alertThreshold", picked.defaultThreshold);
+        return { ok: true, summary: `Switched to ${picked.label} mode`, data: { mode: picked.id, for: picked.who } };
       },
 
       set_alert_threshold: ({ kp }) => {
