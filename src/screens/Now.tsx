@@ -17,6 +17,7 @@ import {
 import {
   Btn,
   Card,
+  CountUp,
   Row,
   ScreenHeader,
   Segmented,
@@ -153,7 +154,7 @@ export function Now({ go }: { go: (s: Screen) => void }) {
                   className="mono"
                   style={{ fontSize: 64, fontWeight: 600, lineHeight: 1, letterSpacing: "-0.02em" }}
                 >
-                  {c.kp.toFixed(1)}
+                  <CountUp value={c.kp} />
                 </div>
                 <div style={{ color: status.color, fontSize: 17, fontWeight: 600, marginTop: 8 }}>
                   {status.label}
@@ -171,7 +172,7 @@ export function Now({ go }: { go: (s: Screen) => void }) {
                 <span>0 · CALM</span>
                 <span>STORM · 9</span>
               </div>
-              <SpectrumLine value={status.scale} height={10} />
+              <SpectrumLine value={status.scale} height={10} busy={c.refreshing} />
             </div>
           )}
 

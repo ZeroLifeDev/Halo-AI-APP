@@ -7,10 +7,20 @@ export function tap() {
 }
 
 /** The signature Spectrum Line: calm → storm, filled to `value` (0–1). */
-export function SpectrumLine({ value = 1, height = 6 }: { value?: number; height?: number }) {
+export function SpectrumLine({
+  value = 1,
+  height = 6,
+  busy = false,
+}: {
+  value?: number;
+  height?: number;
+  /** Runs a light along the bar while a refresh is in flight. */
+  busy?: boolean;
+}) {
   const pct = Math.max(0, Math.min(value, 1)) * 100;
   return (
     <div
+      className={busy ? "sweeping" : undefined}
       style={{
         position: "relative",
         height,
@@ -491,4 +501,63 @@ export function timeAgo(ms: number | null): string {
   if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
   return `${Math.floor(s / 86400)} d ago`;
+}
+
+/**
+ * Eases a number to its new value. A reading that slides from 3.1 to 4.7
+ * reads as a change; one that snaps looks like a re-render.
+ */
+export function CountUp({
+  value,
+  decimals = 1,
+  durationMs = 700,
+}: {
+  value: number;
+  decimals?: number;
+  durationMs?: number;
+}) {
+  const [shown, setShown] = React.useState(value);
+  const fromRef = React.useRef(value);
+  const rafRef = React.useRef<number | undefined>(undefined);
+
+  React.useEffect(() => {
+    const from = fromRef.current;
+    const to = value;
+    if (from === to) return;
+
+    const started = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - started) / durationMs);
+      // ease-out cubic: quick to move, gentle to land
+      const eased = 1 - Math.pow(1 - t, 3);
+      setShown(from + (to - from) * eased);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+      else fromRef.current = to;
+    };
+    rafRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      fromRef.current = value;
+    };
+  }, [value, durationMs]);
+
+  return <>{shown.toFixed(decimals)}</>;
+}
+
+/** Wraps children so they rise into place in sequence. */
+export function Stagger({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement(child) ? (
+          <div className="rise" style={{ ["--i" as string]: i }}>
+            {child}
+          </div>
+        ) : (
+          child
+        ),
+      )}
+    </>
+  );
 }

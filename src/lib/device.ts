@@ -194,6 +194,8 @@ export async function disconnectNode() {
   try {
     await BleClient.disconnect(id);
   } finally {
+    lastPushedLevel = null;
+    lastPushedAlert = null;
     emit({ connected: false, telemetry: null, gps: null, status: null });
   }
 }
@@ -225,12 +227,42 @@ export async function savedNode(): Promise<{ deviceId: string; name?: string } |
 export const CMD_CALIBRATE = 1;
 export const CMD_IDENTIFY = 2;
 export const CMD_SLEEP = 3;
+export const CMD_SET_LEVEL = 4;
+export const CMD_SET_ALERT = 5;
 
-export async function sendCommand(cmd: number) {
+export async function sendCommand(cmd: number, arg?: number) {
   const id = state.device?.deviceId;
   if (!id || !state.connected) throw new Error("No node connected.");
-  await BleClient.write(id, HALO_SERVICE, CHAR_COMMAND, numbersToDataView([cmd]));
+  const bytes = arg === undefined ? [cmd] : [cmd, arg];
+  await BleClient.write(id, HALO_SERVICE, CHAR_COMMAND, numbersToDataView(bytes));
 }
+
+/**
+ * Mirrors the planetary storm level onto the node's three LEDs, so the device
+ * on the shelf shows the same picture as the app: red for quiet, yellow for
+ * unsettled, blue once it is actually storming.
+ */
+export async function pushLevelToNode(kp: number | null) {
+  if (!state.connected || kp == null) return;
+
+  const level = kp >= 5 ? 2 : kp >= 4 ? 1 : 0;
+  const alerting = kp >= 5;
+
+  // Only talk to the node when something actually changed.
+  if (level === lastPushedLevel && alerting === lastPushedAlert) return;
+  lastPushedLevel = level;
+  lastPushedAlert = alerting;
+
+  try {
+    await sendCommand(CMD_SET_LEVEL, level);
+    await sendCommand(CMD_SET_ALERT, alerting ? 1 : 0);
+  } catch {
+    /* node went away mid-write; the next refresh retries */
+  }
+}
+
+let lastPushedLevel: number | null = null;
+let lastPushedAlert: boolean | null = null;
 
 /**
  * Compares what the node measures locally against the planetary Kp index.

@@ -166,21 +166,74 @@ plus a token-fanout backend; it is not wired up.
 
 ## The hardware
 
-`firmware/halo-node/halo-node.ino` is the ESP32 firmware. It advertises a BLE
-service the app knows how to read:
+`firmware/halo-node/halo-node.ino` is the ESP32 firmware.
+
+### Wiring
+
+| Part | ESP32 pin | Notes |
+| --- | --- | --- |
+| GPS TX | **GPIO17** (RX) | module transmits, ESP32 listens |
+| GPS RX | **GPIO16** (TX) | ESP32 transmits, module listens |
+| GPS VCC / GND | 3V3 / GND | some modules want 5V — check yours |
+| Red LED — *low* | **GPIO25** | through a 220–330Ω resistor to GND |
+| Yellow LED — *medium* | **GPIO26** | " |
+| Blue LED — *high* | **GPIO27** | " |
+| Magnetometer | GPIO21 SDA, GPIO22 SCL | QMC5883L or HMC5883L |
+| Geiger pulse (optional) | GPIO4 | falling edge per count |
+| Battery sense (optional) | GPIO34 | via a 2:1 divider |
+
+UART2 runs at 9600 baud, the NEO-series default.
+
+### What the LEDs are saying
+
+The three LEDs are the node's entire user interface, so every state is
+distinct at a glance:
+
+| State | Animation |
+| --- | --- |
+| Boot | single sweep red → yellow → blue, then a shared fade |
+| Self test | all three flash once — every channel works |
+| Advertising | slow blue breath, waiting for the phone |
+| Connecting | quick blue double-blink |
+| Connected | sweep up, all three flash, then settle |
+| Searching for GPS | yellow-led chase along the row |
+| GPS locked | three fast yellow blinks |
+| Steady | the current level's LED breathing gently |
+| Alert | that LED pulsing hard, twice a second |
+| Calibrating | red ↔ blue ping-pong |
+| Identify | all three strobe for five seconds |
+| Low battery | red double-blink every 4s, over anything else |
+| Sleeping | slow fade to dark |
+
+Animations run from a non-blocking scheduler with gamma-corrected PWM — the
+main loop never blocks for a light show, so BLE and GPS keep running
+throughout.
+
+### BLE service
 
 | Characteristic | Direction | Contents |
 | --- | --- | --- |
 | `…0002` telemetry | notify | magnetic field XYZ + magnitude + drift, radiation cpm, temperature |
 | `…0003` GPS | notify | latitude, longitude, altitude, HDOP, satellite count, fix flag |
 | `…0004` status | read | battery %, firmware version, uptime |
-| `…0005` command | write | `1` calibrate · `2` flash the light · `3` sleep |
+| `…0005` command | write | see below |
 
-Wiring, parts and library list are documented at the top of the sketch. The
-packed structs there are the contract with `src/lib/device.ts` — change one, change
-both.
+Commands are one byte, some with an argument byte:
 
----
+| Byte | Command | Argument |
+| --- | --- | --- |
+| `1` | calibrate the magnetometer | — |
+| `2` | flash the LEDs to identify | — |
+| `3` | deep sleep | — |
+| `4` | set displayed level | `0` low · `1` medium · `2` high |
+| `5` | set alert pulse | `0` off · `1` on |
+
+The app pushes `4` and `5` on every refresh, so a node sitting on a shelf
+shows the same picture as the phone: red while things are quiet, yellow when
+unsettled, blue and pulsing once it is actually storming.
+
+The packed structs in the sketch are the contract with `src/lib/device.ts` —
+change one, change both.
 
 ## Project layout
 

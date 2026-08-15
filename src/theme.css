@@ -320,3 +320,131 @@ select {
   animation: shimmer 1.4s infinite linear;
   border-radius: 8px;
 }
+
+/* ============================================================
+   Motion
+   Everything is short, eased and purposeful — movement should
+   explain what changed, never decorate.
+   ============================================================ */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Cards entering a screen, staggered by index via --i */
+.rise {
+  animation: rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+
+/* A light travelling along the spectrum line while data is refreshing */
+.sweeping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: sweep 1.5s ease-in-out infinite;
+}
+
+@keyframes glow-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.45), 0 0 22px rgba(45, 212, 191, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 9px rgba(45, 212, 191, 0), 0 0 34px rgba(45, 212, 191, 0.32);
+  }
+}
+.glow {
+  animation: glow-ring 2.6s ease-in-out infinite;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0) scale(1.03);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+.drift {
+  animation: drift 7s ease-in-out infinite;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.pop {
+  animation: pop 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.slide-in {
+  animation: slide-in-right 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* The aurora wash behind hero sections, slowly breathing */
+@keyframes aurora-shift {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: translateY(0) scaleX(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-6px) scaleX(1.06);
+  }
+}
+.aurora {
+  animation: aurora-shift 11s ease-in-out infinite;
+}
+
+/* Respect the system setting — some people get motion sick. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

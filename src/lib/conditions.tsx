@@ -24,6 +24,7 @@ import {
 } from "./swpc";
 import { useStore } from "./store";
 import { maybeAlert } from "./notify";
+import { pushLevelToNode } from "./device";
 
 export type Conditions = {
   kp: number | null;
@@ -131,6 +132,9 @@ export function ConditionsProvider({ children }: { children: React.ReactNode }) 
     });
 
     inFlight.current = false;
+
+    // Keep a connected node's LEDs in step with the planetary reading.
+    pushLevelToNode(latestKp).catch(() => {});
 
     // Raise a notification if this refresh crossed the user's threshold.
     maybeAlert({
